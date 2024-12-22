@@ -1,23 +1,54 @@
 import { StyleSheet } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
+
+const lightColors = {
+  background: 'hsl(0, 0%, 100%)',          // White
+  foreground: 'hsl(222.2, 84%, 4.9%)',     // Near Black
+  card: 'hsl(0, 0%, 100%)',                // White
+  cardForeground: 'hsl(222.2, 84%, 4.9%)', // Near Black
+  popover: 'hsl(0, 0%, 100%)',             // White
+  popoverForeground: 'hsl(222.2, 84%, 4.9%)', // Near Black
+  primary: 'hsl(222.2, 47.4%, 11.2%)',     // Dark Blue
+  primaryForeground: 'hsl(210, 40%, 98%)', // Light Blue
+  secondary: 'hsl(210, 40%, 96.1%)',       // Light Gray
+  secondaryForeground: 'hsl(222.2, 47.4%, 11.2%)', // Dark Blue
+  muted: 'hsl(210, 40%, 96.1%)',           // Light Gray
+  mutedForeground: 'hsl(215.4, 16.3%, 46.9%)', // Medium Gray
+  accent: 'hsl(210, 40%, 96.1%)',          // Light Gray
+  accentForeground: 'hsl(222.2, 47.4%, 11.2%)', // Dark Blue
+  destructive: 'hsl(0, 84.2%, 60.2%)',     // Red
+  destructiveForeground: 'hsl(210, 40%, 98%)', // Light Blue
+  border: 'hsl(214.3, 31.8%, 91.4%)',      // Very Light Gray
+  input: 'hsl(214.3, 31.8%, 91.4%)',       // Very Light Gray
+  ring: 'hsl(222.2, 84%, 4.9%)',           // Near Black
+};
+
+const darkColors = {
+  background: 'hsl(222.2, 84%, 4.9%)',     // Near Black
+  foreground: 'hsl(210, 40%, 98%)',        // Light Blue
+  card: 'hsl(222.2, 84%, 4.9%)',           // Near Black
+  cardForeground: 'hsl(210, 40%, 98%)',    // Light Blue
+  popover: 'hsl(222.2, 84%, 4.9%)',        // Near Black
+  popoverForeground: 'hsl(210, 40%, 98%)', // Light Blue
+  primary: 'hsl(210, 40%, 98%)',           // Light Blue
+  primaryForeground: 'hsl(222.2, 47.4%, 11.2%)', // Dark Blue
+  secondary: 'hsl(217.2, 32.6%, 17.5%)',   // Dark Gray
+  secondaryForeground: 'hsl(210, 40%, 98%)', // Light Blue
+  muted: 'hsl(217.2, 32.6%, 17.5%)',       // Dark Gray
+  mutedForeground: 'hsl(215, 20.2%, 65.1%)', // Medium Gray
+  accent: 'hsl(217.2, 32.6%, 17.5%)',      // Dark Gray
+  accentForeground: 'hsl(210, 40%, 98%)',  // Light Blue
+  destructive: 'hsl(0, 62.8%, 30.6%)',     // Dark Red
+  destructiveForeground: 'hsl(210, 40%, 98%)', // Light Blue
+  border: 'hsl(217.2, 32.6%, 25%)',        // Darker gray for better contrast in dark mode
+  input: 'hsl(217.2, 32.6%, 17.5%)',       // Dark Gray
+  ring: 'hsl(212.7, 26.8%, 83.9%)',        // Light Gray
+};
 
 export const theme = {
   colors: {
-    primary: '#0f172a',
-    primaryDark: '#0056B3',
-    secondary: '#5856D6',
-    success: '#34C759',
-    warning: '#FF9500',
-    error: '#ef4444',
-    background: '#FFFFFF',
-    surface: '#F2F2F7',
-    text: '#000000',
-    textLight: '#6B7280',
-    gray: '#D1D5DB',
-    border: '#E5E7EB',
-    onPrimary: '#FFFFFF',
-	textSecondary: '#666666',
-    disabled: '#C7C7CC',
-    accent: '#f1f5f9',
+    light: lightColors,
+    dark: darkColors,
   },
   typography: {
     fontSize: {
@@ -104,9 +135,7 @@ export const theme = {
       },
     },
     outline: {
-      backgroundColor: '#FFFFFF',
       borderWidth: 1,
-      borderColor: '#e2e8f0',
       borderRadius: 6,
       height: 36,
       paddingHorizontal: 12,
@@ -115,7 +144,6 @@ export const theme = {
       justifyContent: 'center' as const,
     },
     destructive: {
-      backgroundColor: '#ef4444',
       borderRadius: 6,
       height: 36,
       paddingHorizontal: 12,
@@ -126,10 +154,15 @@ export const theme = {
   },
 } as const;
 
+// Create a hook to get the current theme colors
+export const useThemeColors = () => {
+  const { isDark } = useTheme();
+  return isDark ? theme.colors.dark : theme.colors.light;
+};
+
 export const commonStyles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
   },
   contentContainer: {
     padding: theme.spacing.m,
@@ -137,21 +170,17 @@ export const commonStyles = StyleSheet.create({
   input: {
     height: 48,
     borderWidth: 1,
-    borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.m,
     paddingHorizontal: theme.spacing.m,
     marginBottom: theme.spacing.m,
-    backgroundColor: theme.colors.surface,
   },
   button: {
-    backgroundColor: theme.colors.primary,
     height: 48,
     borderRadius: theme.borderRadius.m,
     justifyContent: 'center',
     alignItems: 'center',
   },
   buttonText: {
-    color: theme.colors.surface,
     fontSize: 16,
     fontWeight: '600',
   },
@@ -159,14 +188,11 @@ export const commonStyles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: theme.spacing.m,
-    color: theme.colors.text,
   },
   error: {
-    color: theme.colors.error,
     marginBottom: theme.spacing.m,
   },
   link: {
-    color: theme.colors.primary,
     textDecorationLine: 'underline',
   },
 }); 

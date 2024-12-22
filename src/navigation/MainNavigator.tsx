@@ -20,7 +20,6 @@ export default function MainNavigator() {
       <Stack.Screen 
         name="Profile" 
         component={ProfileScreen}
-        options={{ headerShown: true }}
       />
     </Stack.Navigator>
   );

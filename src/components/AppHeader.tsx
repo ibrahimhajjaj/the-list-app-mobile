@@ -1,12 +1,14 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Image } from 'react-native';
-import { Bell, BellOff, Sun, User } from 'lucide-react-native';
+import { Bell, BellOff, Moon, Sun, User } from 'lucide-react-native';
 import { theme } from '../constants/theme';
 import { useNavigation } from '@react-navigation/native';
 import { useAppDispatch, useAppSelector } from '../hooks/redux';
 import { toggleNotifications } from '../store/slices/settingsSlice';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MainTabParamList } from '../navigation/types';
+import { useTheme } from '../contexts/ThemeContext';
+import { useThemeColors } from '../constants/theme';
 
 type NavigationProp = NativeStackNavigationProp<MainTabParamList>;
 
@@ -14,6 +16,8 @@ export function AppHeader() {
   const navigation = useNavigation<NavigationProp>();
   const dispatch = useAppDispatch();
   const { notificationsEnabled } = useAppSelector((state) => state.settings) || { notificationsEnabled: false };
+  const { toggleTheme, isDark } = useTheme();
+  const colors = useThemeColors();
 
   const handleNotificationToggle = () => {
     dispatch(toggleNotifications());
@@ -24,13 +28,13 @@ export function AppHeader() {
   };
 
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, { backgroundColor: colors.background }]}>
       <View style={styles.headerLeft}>
         <Image 
           source={require('../../assets/app-icon.png')} 
           style={styles.appIcon} 
         />
-        <Text style={styles.appTitle}>The List App</Text>
+        <Text style={[styles.appTitle, { color: colors.foreground }]}>The List App</Text>
       </View>
       <View style={styles.headerRight}>
         <TouchableOpacity 
@@ -38,19 +42,26 @@ export function AppHeader() {
           onPress={handleNotificationToggle}
         >
           {notificationsEnabled ? (
-            <Bell size={21} color={theme.colors.text} />
+            <Bell size={21} color={colors.foreground} />
           ) : (
-            <BellOff size={21} color={theme.colors.textLight} />
+            <BellOff size={21} color={colors.mutedForeground} />
           )}
         </TouchableOpacity>
-        <TouchableOpacity style={styles.iconButton}>
-          <Sun size={21} color={theme.colors.text} />
+        <TouchableOpacity 
+          style={styles.iconButton}
+          onPress={toggleTheme}
+        >
+          {isDark ? (
+            <Moon size={21} color={colors.foreground} />
+          ) : (
+            <Sun size={21} color={colors.foreground} />
+          )}
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.profileButton}
           onPress={handleProfilePress}
         >
-          <User size={21} color={theme.colors.text} />
+          <User size={21} color={colors.foreground} />
         </TouchableOpacity>
       </View>
     </View>
@@ -65,7 +76,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.m,
     paddingTop: theme.spacing.xl,
     paddingBottom: theme.spacing.xs,
-    backgroundColor: '#FFFFFF',
     ...theme.shadows.small,
     position: 'absolute',
     top: 0,
@@ -90,7 +100,6 @@ const styles = StyleSheet.create({
   appTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#000000',
   },
   iconButton: {
     padding: theme.spacing.s,

@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, TextInput, Modal, Alert } fro
 import { useAppDispatch } from '../hooks/redux';
 import { shareList } from '../store/actions/listActions';
 import { theme } from '../constants/theme';
+import { useThemeColors } from '../constants/theme';
 
 interface ShareListModalProps {
   listId: string;
@@ -15,6 +16,7 @@ export function ShareListModal({ listId, visible, onClose }: ShareListModalProps
   const [email, setEmail] = useState('');
   const [shareType, setShareType] = useState<'view' | 'edit'>('view');
   const [isLoading, setIsLoading] = useState(false);
+  const colors = useThemeColors();
 
   const handleShare = async () => {
     if (!email.trim()) return;
@@ -55,64 +57,88 @@ export function ShareListModal({ listId, visible, onClose }: ShareListModalProps
       onRequestClose={onClose}
     >
       <View style={styles.overlay}>
-        <View style={styles.modal}>
-          <Text style={styles.title}>Share List</Text>
+        <View style={[styles.modal, { backgroundColor: colors.background }]}>
+          <Text style={[styles.title, { color: colors.foreground }]}>Share List</Text>
           
           <View style={styles.permissionButtons}>
             <TouchableOpacity 
               style={[
                 styles.permissionButton,
-                shareType === 'view' && styles.permissionButtonSelected
+                { 
+                  borderColor: colors.border,
+                  backgroundColor: shareType === 'view' ? colors.primary : colors.background
+                }
               ]}
               onPress={() => setShareType('view')}
             >
               <Text style={[
                 styles.permissionButtonText,
-                shareType === 'view' && styles.permissionButtonTextSelected
+                { color: shareType === 'view' ? colors.primaryForeground : colors.foreground }
               ]}>View Only</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[
                 styles.permissionButton,
-                shareType === 'edit' && styles.permissionButtonSelected
+                { 
+                  borderColor: colors.border,
+                  backgroundColor: shareType === 'edit' ? colors.primary : colors.background
+                }
               ]}
               onPress={() => setShareType('edit')}
             >
               <Text style={[
                 styles.permissionButtonText,
-                shareType === 'edit' && styles.permissionButtonTextSelected
+                { color: shareType === 'edit' ? colors.primaryForeground : colors.foreground }
               ]}>Can Edit</Text>
             </TouchableOpacity>
           </View>
 
           <TextInput
-            style={styles.input}
+            style={[
+              styles.input,
+              {
+                borderColor: colors.border,
+                backgroundColor: colors.background,
+                color: colors.foreground
+              }
+            ]}
             value={email}
             onChangeText={setEmail}
             placeholder="Enter email address"
-            placeholderTextColor={theme.colors.textSecondary}
+            placeholderTextColor={colors.mutedForeground}
             keyboardType="email-address"
             autoCapitalize="none"
           />
 
           <View style={styles.buttonContainer}>
             <TouchableOpacity 
-              style={[styles.button, styles.closeButton]} 
+              style={[
+                styles.button,
+                {
+                  backgroundColor: colors.background,
+                  borderColor: colors.border,
+                  borderWidth: 1
+                }
+              ]} 
               onPress={onClose}
               disabled={isLoading}
             >
-              <Text style={styles.closeButtonText}>Close</Text>
+              <Text style={[styles.buttonText, { color: colors.foreground }]}>
+                Close
+              </Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={[
-                styles.button, 
-                styles.shareButton, 
-                (!email || isLoading) && styles.shareButtonDisabled
+                styles.button,
+                {
+                  backgroundColor: colors.primary,
+                  opacity: (!email || isLoading) ? 0.5 : 1
+                }
               ]} 
               onPress={handleShare}
               disabled={!email || isLoading}
             >
-              <Text style={styles.shareButtonText}>
+              <Text style={[styles.buttonText, { color: colors.primaryForeground }]}>
                 {isLoading ? 'Sharing...' : 'Share'}
               </Text>
             </TouchableOpacity>
@@ -131,7 +157,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modal: {
-    backgroundColor: theme.colors.background,
     borderRadius: theme.borderRadius.l,
     padding: theme.spacing.l,
     width: '90%',
@@ -140,7 +165,6 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: theme.colors.text,
     marginBottom: theme.spacing.l,
     textAlign: 'center',
   },
@@ -155,32 +179,20 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.buttons.sizes.default.paddingHorizontal,
     borderRadius: theme.borderRadius.m,
     borderWidth: 1,
-    borderColor: theme.colors.border,
-    backgroundColor: theme.colors.background,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  permissionButtonSelected: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
   },
   permissionButtonText: {
     fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
-    color: theme.colors.text,
-  },
-  permissionButtonTextSelected: {
-    color: theme.colors.background,
   },
   input: {
     borderWidth: 1,
-    borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.m,
     padding: theme.spacing.m,
     fontSize: 14,
     marginBottom: theme.spacing.l,
-    color: theme.colors.text,
   },
   buttonContainer: {
     flexDirection: 'row',
@@ -194,25 +206,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  closeButton: {
-    backgroundColor: theme.colors.background,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  closeButtonText: {
+  buttonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: theme.colors.text,
-  },
-  shareButton: {
-    backgroundColor: theme.colors.primary,
-  },
-  shareButtonDisabled: {
-    opacity: 0.5,
-  },
-  shareButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.background,
   },
 }); 

@@ -2,6 +2,7 @@ import React from 'react';
 import { StyleSheet, TouchableOpacity, View, Text } from 'react-native';
 import { List } from '../store/slices/listSlice';
 import { theme } from '../constants/theme';
+import { useThemeColors } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
 interface ListOverviewItemProps {
@@ -12,19 +13,29 @@ interface ListOverviewItemProps {
 export function ListOverviewItem({ list, onPress }: ListOverviewItemProps) {
   const completedItems = list.items.filter(item => item.completed).length;
   const totalItems = list.items.length;
+  const colors = useThemeColors();
 
   return (
-    <TouchableOpacity style={styles.container} onPress={onPress}>
+    <TouchableOpacity 
+      style={[styles.container, { backgroundColor: colors.card }]} 
+      onPress={onPress}
+    >
       <View style={styles.header}>
         <View style={styles.titleContainer}>
-          <Text style={styles.title}>{list.title}</Text>
-          {list.shared && <Text style={styles.sharedBadge}>(Shared)</Text>}
+          <Text style={[styles.title, { color: colors.foreground }]}>
+            {list.title}
+          </Text>
+          {list.shared && (
+            <Text style={[styles.sharedBadge, { color: colors.mutedForeground }]}>
+              (Shared)
+            </Text>
+          )}
         </View>
         <View style={styles.countContainer}>
-          <Text style={styles.count}>
+          <Text style={[styles.count, { color: colors.mutedForeground }]}>
             ({completedItems}/{totalItems})
           </Text>
-          <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
+          <Ionicons name="chevron-forward" size={20} color={colors.mutedForeground} />
         </View>
       </View>
     </TouchableOpacity>
@@ -33,7 +44,6 @@ export function ListOverviewItem({ list, onPress }: ListOverviewItemProps) {
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.m,
     padding: theme.spacing.m,
     marginBottom: theme.spacing.m,
@@ -52,12 +62,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: '600',
-    color: theme.colors.text,
     marginRight: theme.spacing.s,
   },
   sharedBadge: {
     fontSize: 14,
-    color: theme.colors.textSecondary,
   },
   countContainer: {
     flexDirection: 'row',
@@ -65,7 +73,6 @@ const styles = StyleSheet.create({
   },
   count: {
     fontSize: 14,
-    color: theme.colors.textSecondary,
     marginRight: theme.spacing.s,
   },
 }); 

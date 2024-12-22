@@ -5,6 +5,7 @@ import api from '../services/api';
 import { useAppDispatch } from '../hooks/redux';
 import { setError } from '../store/slices/listSlice';
 import { theme } from '../constants/theme';
+import { useThemeColors } from '../constants/theme';
 
 interface User {
   _id: string;
@@ -22,6 +23,7 @@ export const UserSearchInput: React.FC<Props> = ({ onSelectUser, excludeUsers = 
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(false);
   const dispatch = useAppDispatch();
+  const colors = useThemeColors();
 
   const searchUsers = useCallback(
     debounce(async (term: string) => {
@@ -60,24 +62,46 @@ export const UserSearchInput: React.FC<Props> = ({ onSelectUser, excludeUsers = 
   return (
     <View style={styles.container}>
       <TextInput
-        style={styles.input}
+        style={[
+          styles.input,
+          {
+            borderColor: colors.border,
+            backgroundColor: colors.background,
+            color: colors.foreground
+          }
+        ]}
         value={searchTerm}
         onChangeText={handleSearch}
         placeholder="Search users by name or email"
+        placeholderTextColor={colors.mutedForeground}
         autoCapitalize="none"
         autoCorrect={false}
       />
-      {loading && <Text style={styles.loadingText}>Searching...</Text>}
+      {loading && (
+        <Text style={[styles.loadingText, { color: colors.mutedForeground }]}>
+          Searching...
+        </Text>
+      )}
       <FlatList
         data={users}
         keyExtractor={(item) => item._id}
         renderItem={({ item }) => (
           <TouchableOpacity
-            style={styles.userItem}
+            style={[
+              styles.userItem,
+              { 
+                borderBottomColor: colors.border,
+                backgroundColor: colors.card
+              }
+            ]}
             onPress={() => handleSelectUser(item)}
           >
-            <Text style={styles.userName}>{item.name}</Text>
-            <Text style={styles.userEmail}>{item.email}</Text>
+            <Text style={[styles.userName, { color: colors.foreground }]}>
+              {item.name}
+            </Text>
+            <Text style={[styles.userEmail, { color: colors.mutedForeground }]}>
+              {item.email}
+            </Text>
           </TouchableOpacity>
         )}
         style={styles.list}
@@ -92,11 +116,9 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: theme.colors.border,
     borderRadius: 8,
     padding: 12,
     marginBottom: 8,
-    backgroundColor: theme.colors.background,
   },
   list: {
     maxHeight: 200,
@@ -104,21 +126,17 @@ const styles = StyleSheet.create({
   userItem: {
     padding: 12,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
   },
   userName: {
     fontSize: 16,
     fontWeight: '500',
-    color: theme.colors.text,
   },
   userEmail: {
     fontSize: 14,
-    color: theme.colors.textSecondary,
     marginTop: 4,
   },
   loadingText: {
     textAlign: 'center',
-    color: theme.colors.textSecondary,
     marginVertical: 8,
   },
 }); 

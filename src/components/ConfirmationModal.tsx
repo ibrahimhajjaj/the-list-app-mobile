@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Modal } from 'react-native';
 import { theme } from '../constants/theme';
+import { useThemeColors } from '../constants/theme';
 
 interface ConfirmationModalProps {
   visible: boolean;
@@ -21,6 +22,8 @@ export function ConfirmationModal({
   onConfirm,
   onCancel,
 }: ConfirmationModalProps) {
+  const colors = useThemeColors();
+
   return (
     <Modal
       visible={visible}
@@ -29,22 +32,31 @@ export function ConfirmationModal({
       onRequestClose={onCancel}
     >
       <View style={styles.overlay}>
-        <View style={styles.modal}>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.message}>{message}</Text>
+        <View style={[styles.modal, { backgroundColor: colors.background }]}>
+          <Text style={[styles.title, { color: colors.foreground }]}>{title}</Text>
+          <Text style={[styles.message, { color: colors.mutedForeground }]}>{message}</Text>
           
           <View style={styles.buttonContainer}>
             <TouchableOpacity 
-              style={[styles.button, styles.cancelButton]} 
+              style={[
+                styles.button, 
+                { 
+                  backgroundColor: colors.background,
+                  borderColor: colors.border
+                }
+              ]} 
               onPress={onCancel}
             >
-              <Text style={styles.cancelButtonText}>{cancelText}</Text>
+              <Text style={[styles.buttonText, { color: colors.foreground }]}>{cancelText}</Text>
             </TouchableOpacity>
             <TouchableOpacity 
-              style={[styles.button, styles.deleteButton]} 
+              style={[
+                styles.button, 
+                { backgroundColor: colors.destructive }
+              ]} 
               onPress={onConfirm}
             >
-              <Text style={styles.deleteButtonText}>{confirmText}</Text>
+              <Text style={[styles.buttonText, { color: colors.destructiveForeground }]}>{confirmText}</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -61,7 +73,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modal: {
-    backgroundColor: theme.colors.background,
     borderRadius: theme.borderRadius.l,
     padding: theme.spacing.l,
     width: '90%',
@@ -70,12 +81,10 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: theme.colors.text,
     marginBottom: theme.spacing.s,
   },
   message: {
     fontSize: 14,
-    color: theme.colors.textSecondary,
     marginBottom: theme.spacing.l,
     lineHeight: 20,
   },
@@ -90,23 +99,10 @@ const styles = StyleSheet.create({
     borderRadius: theme.borderRadius.m,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  cancelButton: {
-    backgroundColor: theme.colors.background,
     borderWidth: 1,
-    borderColor: theme.colors.border,
   },
-  cancelButtonText: {
+  buttonText: {
     fontSize: 14,
     fontWeight: '600',
-    color: theme.colors.text,
-  },
-  deleteButton: {
-    backgroundColor: theme.colors.error,
-  },
-  deleteButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.background,
   },
 }); 

@@ -12,6 +12,7 @@ import { RootStackParamList } from './src/navigation/types';
 import { useAppDispatch, useAppSelector } from './src/hooks/redux';
 import { loadUser } from './src/store/slices/authSlice';
 import socketService from './src/services/socket';
+import { ThemeProvider } from './src/contexts/ThemeContext';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -44,15 +45,17 @@ function RootNavigator() {
 
 export default function App() {
   return (
-    <Provider store={store}>
-      <SafeAreaProvider>
-        <GestureHandlerRootView style={{ flex: 1 }}>
-          <NavigationContainer>
-            <StatusBar style="auto" />
-            <RootNavigator />
-          </NavigationContainer>
-        </GestureHandlerRootView>
-      </SafeAreaProvider>
-    </Provider>
+    <ThemeProvider>
+      <Provider store={store}>
+        <SafeAreaProvider>
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <NavigationContainer>
+              <StatusBar style="auto" />
+              <RootNavigator />
+            </NavigationContainer>
+          </GestureHandlerRootView>
+        </SafeAreaProvider>
+      </Provider>
+    </ThemeProvider>
   );
 }

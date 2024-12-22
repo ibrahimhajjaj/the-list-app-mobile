@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput } from 'react-native';
 import { GripVertical, Pencil, Trash2, Check, X, Save } from 'lucide-react-native';
 import { theme } from '../constants/theme';
+import { useThemeColors } from '../constants/theme';
 
 interface ListItemProps {
   text: string;
@@ -28,6 +29,7 @@ export function ListItem({
 }: ListItemProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [editedText, setEditedText] = useState(text);
+  const colors = useThemeColors();
 
   const handleSave = () => {
     if (editedText.trim() !== text) {
@@ -44,30 +46,39 @@ export function ListItem({
   return (
     <View style={[
       styles.container,
-      isActive && styles.dragging
+      { backgroundColor: colors.background },
+      isActive && [styles.dragging, { backgroundColor: colors.accent }]
     ]}>
       <TouchableOpacity 
         style={styles.dragHandle}
         onPressIn={drag}
       >
-        <GripVertical size={20} color={theme.colors.textSecondary} />
+        <GripVertical size={20} color={colors.mutedForeground} />
       </TouchableOpacity>
       
       <TouchableOpacity 
         style={[
           styles.checkbox,
-          completed && styles.checkboxChecked
+          { borderColor: colors.border },
+          completed && { backgroundColor: colors.primary, borderColor: colors.primary }
         ]} 
         onPress={onToggle}
       >
         {completed && (
-          <Check size={14} color="#FFFFFF" strokeWidth={3} />
+          <Check size={14} color={colors.primaryForeground} strokeWidth={3} />
         )}
       </TouchableOpacity>
       
       {isEditing ? (
         <TextInput
-          style={styles.input}
+          style={[
+            styles.input,
+            {
+              color: colors.foreground,
+              borderColor: colors.border,
+              backgroundColor: colors.accent
+            }
+          ]}
           value={editedText}
           onChangeText={setEditedText}
           autoFocus
@@ -81,7 +92,8 @@ export function ListItem({
       ) : (
         <Text style={[
           styles.text,
-          completed && styles.textCompleted
+          { color: colors.foreground },
+          completed && { color: colors.mutedForeground, textDecorationLine: 'line-through' }
         ]}>
           {text}
         </Text>
@@ -94,13 +106,13 @@ export function ListItem({
               style={[styles.actionButton, editButtonStyle]} 
               onPress={handleSave}
             >
-              <Save size={18} color={theme.colors.text} />
+              <Save size={18} color={colors.foreground} />
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.actionButton, editButtonStyle]} 
               onPress={handleCancel}
             >
-              <X size={18} color={theme.colors.text} />
+              <X size={18} color={colors.foreground} />
             </TouchableOpacity>
           </>
         ) : (
@@ -109,13 +121,13 @@ export function ListItem({
               style={[styles.actionButton, editButtonStyle]} 
               onPress={() => setIsEditing(true)}
             >
-              <Pencil size={18} color={theme.colors.text} />
+              <Pencil size={18} color={colors.foreground} />
             </TouchableOpacity>
             <TouchableOpacity 
               style={[styles.actionButton, deleteButtonStyle]} 
               onPress={onDelete}
             >
-              <Trash2 size={18} color="#FFFFFF" />
+              <Trash2 size={18} color={colors.destructiveForeground} />
             </TouchableOpacity>
           </>
         )}
@@ -130,10 +142,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: theme.spacing.s,
     gap: theme.spacing.s,
-    backgroundColor: theme.colors.background,
   },
   dragging: {
-    backgroundColor: theme.colors.surface,
     ...theme.shadows.medium,
   },
   dragHandle: {
@@ -144,22 +154,12 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 4,
     borderWidth: 2,
-    borderColor: theme.colors.border,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  checkboxChecked: {
-    backgroundColor: theme.colors.primary,
-    borderColor: theme.colors.primary,
   },
   text: {
     flex: 1,
     fontSize: 14,
-    color: theme.colors.text,
-  },
-  textCompleted: {
-    textDecorationLine: 'line-through',
-    color: theme.colors.textSecondary,
   },
   actions: {
     flexDirection: 'row',
@@ -172,12 +172,9 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 14,
-    color: theme.colors.text,
     borderWidth: 1,
-    borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.m,
     paddingHorizontal: theme.spacing.s,
     paddingVertical: theme.spacing.xs,
-    backgroundColor: theme.colors.surface,
   },
 }); 

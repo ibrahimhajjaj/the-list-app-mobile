@@ -6,6 +6,7 @@ import { ListItem } from '../../components/ListItem';
 import { ShareListModal } from '../../components/ShareListModal';
 import { BellOff, Sun, User, ChevronUp, ChevronDown, ChevronsUpDown, Pencil, Share2, Trash2, Save, X } from 'lucide-react-native';
 import { theme } from '../../constants/theme';
+import { useThemeColors } from '../../constants/theme';
 import { ListStackScreenProps } from '../../navigation/types';
 import { fetchLists, createList, updateListItem, deleteListItem, updateList, deleteList, shareList } from '../../store/actions/listActions';
 import { List } from '../../store/slices/listSlice';
@@ -29,6 +30,7 @@ export default function ListsScreen() {
   const [isShareModalVisible, setIsShareModalVisible] = useState(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
   const [listToDelete, setListToDelete] = useState<string | null>(null);
+  const colors = useThemeColors();
 
   useEffect(() => {
     if (!selectedList) return;
@@ -232,13 +234,13 @@ export default function ListsScreen() {
   if (listsLoading && !lists) {
     return (
       <View style={[styles.container, styles.centerContent]}>
-        <ActivityIndicator size="large" color={theme.colors.primary} />
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
       <AppHeader />
       <ScrollView 
         style={styles.scrollView}
@@ -257,34 +259,58 @@ export default function ListsScreen() {
           {/* New List Creation Row */}
           <View style={styles.createListRow}>
             <TextInput
-              style={styles.createListInput}
+              style={[
+                styles.createListInput,
+                {
+                  backgroundColor: colors.background,
+                  color: colors.foreground,
+                  borderColor: colors.border
+                }
+              ]}
               value={newListName}
               onChangeText={setNewListName}
               placeholder="New list name"
-              placeholderTextColor={theme.colors.textSecondary}
+              placeholderTextColor={colors.mutedForeground}
             />
             <TouchableOpacity 
               style={[
                 styles.createListButton,
-                !newListName.trim() && styles.createListButtonDisabled
+                { backgroundColor: colors.primary },
+                !newListName.trim() && { opacity: 0.5 }
               ]}
               onPress={handleCreateList}
               disabled={!newListName.trim()}
             >
-              <Text style={styles.createListButtonText}>Create List</Text>
+              <Text style={[styles.createListButtonText, { color: colors.primaryForeground }]}>
+                Create List
+              </Text>
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Selected List Card */}
         {selectedListData && (
-          <View style={styles.selectedListCard}>
+          <View style={[
+            styles.selectedListCard, 
+            { 
+              backgroundColor: colors.card,
+              borderColor: colors.border,
+              borderWidth: 1
+            }
+          ]}>
             <View style={styles.selectedListHeader}>
               <View style={styles.selectedListTitleSection}>
                 {isEditingTitle ? (
                   <View style={styles.editTitleSection}>
                     <TextInput
-                      style={styles.editTitleInput}
+                      style={[
+                        styles.editTitleInput,
+                        {
+                          color: colors.foreground,
+                          borderColor: colors.border,
+                          backgroundColor: colors.background
+                        }
+                      ]}
                       value={editedTitle}
                       onChangeText={setEditedTitle}
                       onSubmitEditing={handleUpdateTitle}
@@ -299,7 +325,7 @@ export default function ListsScreen() {
                       style={[styles.actionButton, styles.outlineButton]} 
                       onPress={handleUpdateTitle}
                     >
-                      <Save size={18} color={theme.colors.text} />
+                      <Save size={18} color={colors.foreground} />
                     </TouchableOpacity>
                     <TouchableOpacity 
                       style={[styles.actionButton, styles.outlineButton]} 
@@ -308,16 +334,16 @@ export default function ListsScreen() {
                         setIsEditingTitle(false);
                       }}
                     >
-                      <X size={18} color={theme.colors.text} />
+                      <X size={18} color={colors.foreground} />
                     </TouchableOpacity>
                   </View>
                 ) : (
                   <>
                     <View style={styles.titleAndCount}>
-                      <Text style={styles.selectedListTitle}>
+                      <Text style={[styles.selectedListTitle, { color: colors.foreground }]}>
                         {selectedListData.title}
                       </Text>
-                      <Text style={styles.itemCount}>
+                      <Text style={[styles.itemCount, { color: colors.mutedForeground }]}>
                         ({getCompletedCount(selectedListData)}/{selectedListData.items.length})
                       </Text>
                     </View>
@@ -326,19 +352,19 @@ export default function ListsScreen() {
                         style={styles.actionButton}
                         onPress={handleEditList}
                       >
-                        <Pencil size={18} color={theme.colors.text} />
+                        <Pencil size={18} color={colors.foreground} />
                       </TouchableOpacity>
                       <TouchableOpacity 
                         style={[styles.actionButton, styles.outlineButton]}
                         onPress={handleShareList}
                       >
-                        <Share2 size={18} color={theme.colors.text} />
+                        <Share2 size={18} color={colors.foreground} />
                       </TouchableOpacity>
                       <TouchableOpacity 
                         style={[styles.actionButton, styles.deleteButton]}
                         onPress={() => handleDeleteList(selectedListData._id)}
                       >
-                        <Trash2 size={20} color="#FFFFFF" />
+                        <Trash2 size={20} color={colors.destructiveForeground} />
                       </TouchableOpacity>
                     </View>
                   </>
@@ -350,22 +376,32 @@ export default function ListsScreen() {
             <View style={styles.addItemSection}>
               <View style={styles.addItemContainer}>
                 <TextInput
-                  style={styles.addItemInput}
+                  style={[
+                    styles.addItemInput,
+                    {
+                      backgroundColor: colors.accent,
+                      color: colors.foreground,
+                      borderColor: colors.border
+                    }
+                  ]}
                   value={newItems}
                   onChangeText={setNewItems}
                   placeholder="Add items (separate with commas or new lines)"
-                  placeholderTextColor={theme.colors.textSecondary}
+                  placeholderTextColor={colors.mutedForeground}
                   multiline
                 />
                 <TouchableOpacity 
                   style={[
                     styles.addItemButton,
-                    !newItems.trim() && styles.addItemButtonDisabled
+                    { backgroundColor: colors.primary },
+                    !newItems.trim() && { opacity: 0.5 }
                   ]}
                   onPress={handleAddItems}
                   disabled={!newItems.trim()}
                 >
-                  <Text style={styles.addItemButtonText}>Add Item</Text>
+                  <Text style={[styles.addItemButtonText, { color: colors.primaryForeground }]}>
+                    Add Item
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -381,11 +417,10 @@ export default function ListsScreen() {
                 />
               )}
             </View>
-
           </View>
         )}
 
-        {/* Share Modal */}
+        {/* Modals */}
         {isShareModalVisible && (
           <ShareListModal
             listId={selectedList || ''}
@@ -411,7 +446,6 @@ export default function ListsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: theme.colors.background,
   },
   scrollView: {
     flex: 1,
@@ -433,32 +467,23 @@ const styles = StyleSheet.create({
   createListInput: {
     flex: 1,
     height: 40,
-    backgroundColor: '#FFFFFF',
     borderRadius: theme.borderRadius.m,
     paddingHorizontal: theme.spacing.s,
     fontSize: 16,
-    color: theme.colors.text,
     borderWidth: 1,
-    borderColor: theme.colors.border,
   },
   createListButton: {
-    backgroundColor: theme.colors.primary,
     paddingHorizontal: theme.spacing.m,
     paddingVertical: theme.spacing.s,
     borderRadius: theme.borderRadius.m,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  createListButtonDisabled: {
-    backgroundColor: theme.colors.disabled,
-  },
   createListButtonText: {
-    color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
   },
   selectedListCard: {
-    backgroundColor: '#FFFFFF',
     borderRadius: theme.borderRadius.m,
     marginHorizontal: theme.spacing.m,
     marginBottom: theme.spacing.m,
@@ -484,11 +509,9 @@ const styles = StyleSheet.create({
   selectedListTitle: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: theme.colors.text,
   },
   itemCount: {
     fontSize: 14,
-    color: theme.colors.textSecondary,
   },
   selectedListActions: {
     flexDirection: 'row',
@@ -507,18 +530,14 @@ const styles = StyleSheet.create({
     gap: theme.spacing.s,
   },
   addItemInput: {
-    backgroundColor: theme.colors.surface,
     borderRadius: theme.borderRadius.m,
     padding: theme.spacing.m,
     minHeight: 100,
     textAlignVertical: 'top',
-    color: theme.colors.text,
     fontSize: 14,
     borderWidth: 1,
-    borderColor: theme.colors.border,
   },
   addItemButton: {
-    backgroundColor: theme.colors.primary,
     borderRadius: theme.borderRadius.m,
     paddingHorizontal: theme.spacing.l,
     paddingVertical: theme.spacing.s,
@@ -528,13 +547,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   addItemButtonText: {
-    color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '600',
-  },
-  addItemButtonDisabled: {
-    opacity: 0.5,
-    backgroundColor: theme.colors.primary,
   },
   editTitleSection: {
     flex: 1,
@@ -546,9 +560,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 18,
     fontWeight: 'bold',
-    color: theme.colors.text,
     borderWidth: 1,
-    borderColor: theme.colors.border,
     borderRadius: theme.borderRadius.m,
     paddingHorizontal: theme.spacing.m,
     paddingVertical: theme.spacing.s,
