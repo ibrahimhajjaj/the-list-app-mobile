@@ -186,9 +186,21 @@ export default function ListsScreen() {
 
   const confirmDelete = async () => {
     if (listToDelete) {
-      await dispatch(deleteList(listToDelete));
-      setShowDeleteConfirmation(false);
-      setListToDelete(null);
+      try {
+        // Find the next list before deletion
+        const nextList = lists.find(list => list._id !== listToDelete);
+        if (nextList) {
+          // Update selected list before deletion
+          setSelectedList(nextList._id);
+          await storage.saveSelectedList(nextList._id);
+        }
+
+        await dispatch(deleteList(listToDelete)).unwrap();
+        setShowDeleteConfirmation(false);
+        setListToDelete(null);
+      } catch (error) {
+        console.error('Failed to delete list:', error);
+      }
     }
   };
 

@@ -95,9 +95,18 @@ export const updateList = (listId: string, updates: Partial<Omit<List, '_id' | '
 
 export const deleteList = createAsyncThunk(
   'lists/deleteList',
-  async (listId: string) => {
+  async (listId: string, { dispatch, getState }) => {
     await api.delete(`/lists/${listId}`);
-    return listId;
+    
+    // Get current lists from state
+    const state = getState() as { lists: { lists: List[] } };
+    const remainingLists = state.lists.lists.filter(list => list._id !== listId);
+    
+    // Update stored lists
+    await storage.saveLists(remainingLists);
+    
+    // Return only the deleted ID since selection is handled in the component
+    return { deletedId: listId };
   }
 );
 

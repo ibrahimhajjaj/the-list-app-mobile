@@ -118,8 +118,8 @@ const listSlice = createSlice({
       })
       .addCase(deleteList.fulfilled, (state, action) => {
         state.loading = false;
-        state.lists = state.lists.filter(list => list._id !== action.payload);
-        if (state.currentList?._id === action.payload) {
+        state.lists = state.lists.filter(list => list._id !== action.payload.deletedId);
+        if (state.currentList?._id === action.payload.deletedId) {
           state.currentList = null;
         }
       })
