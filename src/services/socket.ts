@@ -1,8 +1,8 @@
 import { io, Socket } from 'socket.io-client';
 import { store } from '../store/store';
 import { updateList } from '../store/slices/listSlice';
-import { List } from '../store/slices/listSlice';
 import { WS_URL } from '../config';
+import { shouldShowNotification } from '../store/slices/settingsSlice';
 import * as Notifications from 'expo-notifications';
 
 class SocketService {
@@ -10,6 +10,8 @@ class SocketService {
   private subscribedLists: Set<string> = new Set();
   private pendingJoins: Set<string> = new Set();
   private notificationsInitialized: boolean = false;
+  private recentNotifications: Set<string> = new Set(); // Track recent notifications
+  private cleanupTimeout: NodeJS.Timeout | null = null;
 
   // Expose socket as read-only
   get socket(): Socket | null {
@@ -48,14 +50,17 @@ class SocketService {
     }
   }
 
-  async connect(token: string) {
-    if (this._socket?.connected) {
-      console.log('[SocketService] Already connected to WebSocket');
-      return;
-    }
+  private cleanupOldNotifications() {
+    // Clear notifications older than 5 seconds
+    this.recentNotifications.clear();
+  }
 
-    // Initialize notifications before connecting
-    await this.initializeNotifications();
+  async connect(token: string) {
+    // Disconnect existing socket if any
+    if (this._socket) {
+      console.log('[SocketService] Cleaning up existing connection');
+      this.disconnect();
+    }
 
     console.log('[SocketService] Connecting to WebSocket at:', WS_URL);
     this._socket = io(WS_URL, {
@@ -64,9 +69,19 @@ class SocketService {
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 1000,
+      forceNew: true, // Force a new connection
     });
 
+    // Initialize notifications before connecting
+    await this.initializeNotifications();
+
     this.setupEventListeners();
+
+    // Setup cleanup interval
+    if (this.cleanupTimeout) {
+      clearInterval(this.cleanupTimeout);
+    }
+    this.cleanupTimeout = setInterval(() => this.cleanupOldNotifications(), 5000);
   }
 
   private setupEventListeners() {
@@ -107,23 +122,61 @@ class SocketService {
       console.log('[SocketService] Received notification:', data);
       
       if (data.type === 'new_notification' && this.notificationsInitialized) {
-        try {
-          await Notifications.scheduleNotificationAsync({
-            content: {
-              title: 'The List App',
-              body: data.data.message,
-              data: { ...data.data },
-            },
-            trigger: null, // Show immediately
-          });
-          console.log('[SocketService] Android notification scheduled');
-        } catch (error) {
-          console.error('[SocketService] Error scheduling notification:', error);
+        // Create a unique key for this notification
+        const notificationKey = `${data.data._id}-${data.data.createdAt}`;
+        
+        // Check if we've recently handled this notification
+        if (this.recentNotifications.has(notificationKey)) {
+          console.log('[SocketService] Duplicate notification suppressed:', notificationKey);
+          return;
+        }
+        
+        // Add to recent notifications
+        this.recentNotifications.add(notificationKey);
+
+        // Determine notification type
+        const message = data.data.message.toLowerCase();
+        let type: 'title_change' | 'item_add' | 'item_delete' | 'item_edit' | 'item_complete';
+        
+        if (message.includes('renamed')) {
+          type = 'title_change';
+        } else if (message.includes('added')) {
+          type = 'item_add';
+        } else if (message.includes('deleted')) {
+          type = 'item_delete';
+        } else if (message.includes('edited')) {
+          type = 'item_edit';
+        } else if (message.includes('marked')) {
+          type = 'item_complete';
+        } else {
+          type = 'item_edit'; // default case
+        }
+
+        const settings = store.getState().settings;
+        const shouldShow = shouldShowNotification(settings, type);
+        console.log('[SocketService] Should show notification:', { type, shouldShow });
+
+        if (shouldShow) {
+          try {
+            await Notifications.scheduleNotificationAsync({
+              content: {
+                title: 'List Update',
+                body: data.data.message,
+                data: { ...data.data },
+              },
+              trigger: null, // Show immediately
+            });
+            console.log('[SocketService] Notification scheduled for:', notificationKey);
+          } catch (error) {
+            console.error('[SocketService] Error scheduling notification:', error);
+          }
+        } else {
+          console.log('[SocketService] Notification suppressed due to settings');
         }
       }
     });
 
-    this._socket.on('listUpdated', (data: { type: string; listId: string; data: List; updatedBy: any; changes: any }) => {
+    this._socket.on('listUpdated', (data: { type: string; listId: string; data: any; updatedBy: any; changes: any }) => {
       console.log('[SocketService] Received list update event:', {
         type: data.type,
         listId: data.listId,
@@ -157,6 +210,25 @@ class SocketService {
         subscribedLists: Array.from(this.subscribedLists)
       });
     });
+  }
+
+  disconnect() {
+    if (this._socket) {
+      console.log('[SocketService] Disconnecting WebSocket');
+      this._socket.removeAllListeners();  // Remove all event listeners
+      this._socket.disconnect();
+      this._socket = null;
+      this.subscribedLists.clear();
+      this.pendingJoins.clear();
+      
+      // Clear cleanup interval
+      if (this.cleanupTimeout) {
+        clearInterval(this.cleanupTimeout);
+        this.cleanupTimeout = null;
+      }
+      
+      console.log('[SocketService] WebSocket disconnected and subscriptions cleared');
+    }
   }
 
   joinList(listId: string) {
@@ -197,17 +269,6 @@ class SocketService {
     this.pendingJoins.delete(listId);
 
     console.log('[SocketService] Updated subscriptions after leave:', Array.from(this.subscribedLists));
-  }
-
-  disconnect() {
-    if (this._socket) {
-      console.log('[SocketService] Disconnecting WebSocket');
-      this._socket.disconnect();
-      this._socket = null;
-      this.subscribedLists.clear();
-      this.pendingJoins.clear();
-      console.log('[SocketService] WebSocket disconnected and subscriptions cleared');
-    }
   }
 
   // Add method to check if connected to a specific list

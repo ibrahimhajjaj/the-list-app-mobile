@@ -11,11 +11,13 @@ export const theme = {
     background: '#FFFFFF',
     surface: '#F2F2F7',
     text: '#000000',
-    textSecondary: '#666666',
-    disabled: '#C7C7CC',
-    border: '#E5E5EA',
-    accent: '#f1f5f9',
+    textLight: '#6B7280',
+    gray: '#D1D5DB',
+    border: '#E5E7EB',
     onPrimary: '#FFFFFF',
+	textSecondary: '#666666',
+    disabled: '#C7C7CC',
+    accent: '#f1f5f9',
   },
   typography: {
     fontSize: {
@@ -39,7 +41,7 @@ export const theme = {
     m: 16,
     l: 24,
     xl: 32,
-    xxl: 40,
+    xxl: 48,
   },
   borderRadius: {
     s: 4,

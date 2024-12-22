@@ -7,16 +7,34 @@ import {
   ActivityIndicator,
   StyleSheet,
   Alert,
+  ScrollView,
+  Switch,
 } from 'react-native';
 import { useAppDispatch, useAppSelector } from '../../hooks/redux';
 import { updateUser, logout } from '../../store/slices/authSlice';
-import { colors } from '../../theme/colors';
+import { theme } from '../../constants/theme';
 import { commonStyles } from '../../theme/commonStyles';
-import { spacing } from '../../theme/spacing';
+import { Bell, ChevronRight, LogOut, Settings, User } from 'lucide-react-native';
+import { 
+  toggleNotifications,
+  toggleTitleChangeNotifications,
+  toggleItemAddNotifications,
+  toggleItemDeleteNotifications,
+  toggleItemEditNotifications,
+  toggleItemCompleteNotifications,
+} from '../../store/slices/settingsSlice';
 
 export default function ProfileScreen() {
   const dispatch = useAppDispatch();
   const { user, loading } = useAppSelector((state) => state.auth);
+  const { 
+    notificationsEnabled,
+    titleChangeNotifications,
+    itemAddNotifications,
+    itemDeleteNotifications,
+    itemEditNotifications,
+    itemCompleteNotifications,
+  } = useAppSelector((state) => state.settings);
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
@@ -41,22 +59,32 @@ export default function ProfileScreen() {
       'Logout',
       'Are you sure you want to logout?',
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Logout',
-          style: 'destructive',
-          onPress: () => dispatch(logout()),
-        },
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Logout', style: 'destructive', onPress: () => dispatch(logout()) },
       ],
       { cancelable: true }
     );
   };
 
+  const NotificationSettingRow = ({ 
+    title, 
+    value, 
+    onToggle, 
+    disabled = false 
+  }) => (
+    <View style={styles.settingRow}>
+      <Text style={styles.settingText}>{title}</Text>
+      <Switch
+        value={value}
+        onValueChange={onToggle}
+        disabled={disabled}
+        trackColor={{ false: theme.colors.gray, true: theme.colors.primary }}
+      />
+    </View>
+  );
+
   return (
-    <View style={commonStyles.container}>
+    <ScrollView style={commonStyles.container} contentContainerStyle={styles.scrollContent}>
       <View style={styles.content}>
         <View style={styles.header}>
           <View style={styles.avatarContainer}>
@@ -64,6 +92,12 @@ export default function ProfileScreen() {
               {user?.name?.charAt(0).toUpperCase()}
             </Text>
           </View>
+          {!isEditing && (
+            <View style={styles.userInfo}>
+              <Text style={styles.userName}>{user?.name}</Text>
+              <Text style={styles.userEmail}>{user?.email}</Text>
+            </View>
+          )}
         </View>
 
         {isEditing ? (
@@ -97,7 +131,7 @@ export default function ProfileScreen() {
                 disabled={loading}
               >
                 {loading ? (
-                  <ActivityIndicator color={colors.surface} />
+                  <ActivityIndicator color={theme.colors.surface} />
                 ) : (
                   <Text style={styles.saveButtonText}>Save</Text>
                 )}
@@ -105,118 +139,204 @@ export default function ProfileScreen() {
             </View>
           </View>
         ) : (
-          <View style={styles.info}>
-            <View style={styles.infoRow}>
-              <Text style={styles.label}>Name</Text>
-              <Text style={styles.value}>{user?.name}</Text>
-            </View>
-            <View style={styles.infoRow}>
-              <Text style={styles.label}>Email</Text>
-              <Text style={styles.value}>{user?.email}</Text>
-            </View>
+          <>
             <TouchableOpacity
-              style={[commonStyles.button, styles.editButton]}
+              style={styles.editProfileButton}
               onPress={() => setIsEditing(true)}
             >
-              <Text style={commonStyles.buttonText}>Edit Profile</Text>
+              <User size={20} color={theme.colors.text} />
+              <Text style={styles.editProfileText}>Edit Profile</Text>
+              <ChevronRight size={20} color={theme.colors.textLight} />
             </TouchableOpacity>
-          </View>
+
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Bell size={20} color={theme.colors.text} />
+                <Text style={styles.sectionTitle}>Notification Settings</Text>
+              </View>
+              
+              <NotificationSettingRow
+                title="Enable All Notifications"
+                value={notificationsEnabled}
+                onToggle={() => dispatch(toggleNotifications())}
+              />
+              <NotificationSettingRow
+                title="List Title Changes"
+                value={titleChangeNotifications}
+                onToggle={() => dispatch(toggleTitleChangeNotifications())}
+                disabled={!notificationsEnabled}
+              />
+              <NotificationSettingRow
+                title="New Items Added"
+                value={itemAddNotifications}
+                onToggle={() => dispatch(toggleItemAddNotifications())}
+                disabled={!notificationsEnabled}
+              />
+              <NotificationSettingRow
+                title="Items Deleted"
+                value={itemDeleteNotifications}
+                onToggle={() => dispatch(toggleItemDeleteNotifications())}
+                disabled={!notificationsEnabled}
+              />
+              <NotificationSettingRow
+                title="Items Edited"
+                value={itemEditNotifications}
+                onToggle={() => dispatch(toggleItemEditNotifications())}
+                disabled={!notificationsEnabled}
+              />
+              <NotificationSettingRow
+                title="Items Completed/Uncompleted"
+                value={itemCompleteNotifications}
+                onToggle={() => dispatch(toggleItemCompleteNotifications())}
+                disabled={!notificationsEnabled}
+              />
+            </View>
+          </>
         )}
 
         <TouchableOpacity
-          style={[styles.button, styles.logoutButton]}
+          style={styles.logoutButton}
           onPress={handleLogout}
         >
-          <Text style={styles.logoutButtonText}>Logout</Text>
+          <LogOut size={20} color={theme.colors.error} />
+          <Text style={styles.logoutText}>Logout</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  scrollContent: {
+    flexGrow: 1,
+  },
   content: {
     flex: 1,
-    padding: spacing.m,
+    padding: theme.spacing.m,
   },
   header: {
     alignItems: 'center',
-    marginBottom: spacing.xl,
+    marginBottom: theme.spacing.xl,
   },
   avatarContainer: {
     width: 100,
     height: 100,
     borderRadius: 50,
-    backgroundColor: colors.primary,
+    backgroundColor: theme.colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
+    marginBottom: theme.spacing.m,
   },
   avatarText: {
     fontSize: 40,
-    color: colors.surface,
+    color: theme.colors.surface,
     fontWeight: 'bold',
   },
-  form: {
-    marginBottom: spacing.xl,
+  userInfo: {
+    alignItems: 'center',
   },
-  info: {
-    marginBottom: spacing.xl,
+  userName: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: theme.colors.text,
+    marginBottom: theme.spacing.xs,
   },
-  infoRow: {
-    marginBottom: spacing.m,
-  },
-  label: {
-    fontSize: 14,
-    color: colors.textLight,
-    marginBottom: spacing.xs,
-  },
-  value: {
+  userEmail: {
     fontSize: 16,
-    color: colors.text,
+    color: theme.colors.textLight,
+  },
+  form: {
+    marginBottom: theme.spacing.xl,
   },
   buttonRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: spacing.m,
+    marginTop: theme.spacing.m,
   },
   button: {
-    padding: spacing.m,
+    flex: 1,
+    padding: theme.spacing.m,
     borderRadius: 8,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  editButton: {
-    marginTop: spacing.m,
-  },
   cancelButton: {
-    flex: 1,
-    marginRight: spacing.s,
-    backgroundColor: colors.surface,
+    marginRight: theme.spacing.s,
+    backgroundColor: theme.colors.surface,
     borderWidth: 1,
-    borderColor: colors.primary,
+    borderColor: theme.colors.primary,
   },
   saveButton: {
-    flex: 1,
-    marginLeft: spacing.s,
-    backgroundColor: colors.primary,
-  },
-  logoutButton: {
-    backgroundColor: colors.error,
-    marginTop: 'auto',
+    marginLeft: theme.spacing.s,
+    backgroundColor: theme.colors.primary,
   },
   cancelButtonText: {
-    color: colors.primary,
+    color: theme.colors.primary,
     fontSize: 16,
     fontWeight: '600',
   },
   saveButtonText: {
-    color: colors.surface,
+    color: theme.colors.surface,
     fontSize: 16,
     fontWeight: '600',
   },
-  logoutButtonText: {
-    color: colors.surface,
+  editProfileButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: theme.spacing.m,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 12,
+    marginBottom: theme.spacing.m,
+    ...theme.shadows.small,
+  },
+  editProfileText: {
+    flex: 1,
+    marginLeft: theme.spacing.m,
     fontSize: 16,
+    color: theme.colors.text,
+  },
+  section: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: 12,
+    padding: theme.spacing.m,
+    marginBottom: theme.spacing.m,
+    ...theme.shadows.small,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.spacing.m,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: theme.colors.text,
+    marginLeft: theme.spacing.m,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: theme.spacing.s,
+  },
+  settingText: {
+    fontSize: 16,
+    color: theme.colors.text,
+  },
+  logoutButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: theme.spacing.m,
+    backgroundColor: theme.colors.surface,
+    borderRadius: 12,
+    marginTop: 'auto',
+    ...theme.shadows.small,
+  },
+  logoutText: {
+    marginLeft: theme.spacing.m,
+    fontSize: 16,
+    color: theme.colors.error,
     fontWeight: '600',
   },
 }); 
