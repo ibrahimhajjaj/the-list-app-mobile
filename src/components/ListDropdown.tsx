@@ -3,6 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-nativ
 import { theme } from '../constants/theme';
 import { List } from '../store/slices/listSlice';
 import { ChevronsUpDown, Check } from 'lucide-react-native';
+import { useAppSelector } from '../hooks/redux';
 
 interface ListDropdownProps {
   lists: List[];
@@ -20,6 +21,7 @@ export function ListDropdown({
   onDropdownToggle
 }: ListDropdownProps) {
   const [searchQuery, setSearchQuery] = React.useState('');
+  const { user } = useAppSelector((state) => state.auth);
   const selectedListData = lists.find(list => list._id === selectedList);
   
   // Filter lists based on search query
@@ -31,13 +33,22 @@ export function ListDropdown({
     );
   }, [lists, searchQuery]);
 
-  const sharedLists = filteredLists.filter(list => list.shared);
-  const ownedLists = filteredLists.filter(list => !list.shared);
+  // Separate lists into owned and shared
+  const { ownedLists, sharedLists } = React.useMemo(() => {
+    return filteredLists.reduce((acc, list) => {
+      if (list.owner._id === user?._id) {
+        acc.ownedLists.push(list);
+      } else if (list.sharedWith.some(share => share.user === user?._id)) {
+        acc.sharedLists.push(list);
+      }
+      return acc;
+    }, { ownedLists: [] as List[], sharedLists: [] as List[] });
+  }, [filteredLists, user?._id]);
 
   return (
     <View style={styles.container}>
       <View style={styles.titleRow}>
-        <Text style={styles.sectionTitle}>Test</Text>
+        <Text style={styles.sectionTitle}>My Lists</Text>
         <TouchableOpacity 
           style={styles.dropdownButton}
           onPress={onDropdownToggle}
@@ -63,9 +74,39 @@ export function ListDropdown({
             />
           </View>
 
+          {/* Owned Lists Section */}
+          {ownedLists.length > 0 && (
+            <View style={styles.listSection}>
+              <Text style={styles.listSectionTitle}>Owned</Text>
+              {ownedLists.map((list) => (
+                <TouchableOpacity
+                  key={list._id}
+                  style={[
+                    styles.listItem,
+                    selectedList === list._id && styles.listItemSelected
+                  ]}
+                  onPress={() => onListPress(list._id)}
+                >
+                  <View style={styles.listItemContent}>
+                    <Text style={[
+                      styles.listItemText,
+                      selectedList === list._id && styles.listItemTextSelected
+                    ]}>
+                      {list.title}
+                    </Text>
+                    {selectedList === list._id && (
+                      <Check size={16} color={theme.colors.primary} />
+                    )}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+
+          {/* Shared Lists Section */}
           {sharedLists.length > 0 && (
             <View style={styles.listSection}>
-              <Text style={styles.listSectionTitle}>Shared</Text>
+              <Text style={styles.listSectionTitle}>Shared with me</Text>
               {sharedLists.map((list) => (
                 <TouchableOpacity
                   key={list._id}
@@ -80,7 +121,7 @@ export function ListDropdown({
                       styles.listItemText,
                       selectedList === list._id && styles.listItemTextSelected
                     ]}>
-                      {list.title} 🥬🥖🍄
+                      {list.title}
                     </Text>
                     {selectedList === list._id && (
                       <Check size={16} color={theme.colors.primary} />
@@ -90,32 +131,6 @@ export function ListDropdown({
               ))}
             </View>
           )}
-
-          <View style={styles.listSection}>
-            <Text style={styles.listSectionTitle}>Owned</Text>
-            {ownedLists.map((list) => (
-              <TouchableOpacity
-                key={list._id}
-                style={[
-                  styles.listItem,
-                  selectedList === list._id && styles.listItemSelected
-                ]}
-                onPress={() => onListPress(list._id)}
-              >
-                <View style={styles.listItemContent}>
-                  <Text style={[
-                    styles.listItemText,
-                    selectedList === list._id && styles.listItemTextSelected
-                  ]}>
-                    {list.title}
-                  </Text>
-                  {selectedList === list._id && (
-                    <Check size={16} color={theme.colors.primary} />
-                  )}
-                </View>
-              </TouchableOpacity>
-            ))}
-          </View>
 
           {searchQuery && filteredLists.length === 0 && (
             <View style={styles.noResults}>
