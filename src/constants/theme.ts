@@ -9,13 +9,29 @@ export const theme = {
     warning: '#FF9500',
     error: '#ef4444',
     background: '#FFFFFF',
-    surface: '#FFFFFF',
+    surface: '#F2F2F7',
     text: '#000000',
-	textY50: '#02081780',
     textSecondary: '#666666',
-    border: '#e2e8f0',
-    disabled: '#E5E5EA',
+    disabled: '#C7C7CC',
+    border: '#E5E5EA',
     accent: '#f1f5f9',
+    onPrimary: '#FFFFFF',
+  },
+  typography: {
+    fontSize: {
+      h1: 32,
+      h2: 24,
+      h3: 20,
+      body: 16,
+      button: 16,
+      caption: 14,
+      small: 12,
+    },
+    fontWeight: {
+      regular: '400',
+      medium: '500',
+      bold: '700',
+    },
   },
   spacing: {
     xs: 4,
@@ -30,29 +46,7 @@ export const theme = {
     m: 8,
     l: 16,
     xl: 24,
-  },
-  typography: {
-    h1: {
-      fontSize: 32,
-      fontWeight: 'bold',
-    },
-    h2: {
-      fontSize: 24,
-      fontWeight: 'bold',
-    },
-    h3: {
-      fontSize: 20,
-      fontWeight: 'bold',
-    },
-    body: {
-      fontSize: 16,
-    },
-    caption: {
-      fontSize: 14,
-    },
-    small: {
-      fontSize: 12,
-    },
+    round: 9999,
   },
   shadows: {
     small: {
@@ -61,8 +55,8 @@ export const theme = {
         width: 0,
         height: 2,
       },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
+      shadowOpacity: 0.25,
+      shadowRadius: 3.84,
       elevation: 2,
     },
     medium: {
@@ -71,19 +65,19 @@ export const theme = {
         width: 0,
         height: 4,
       },
-      shadowOpacity: 0.15,
-      shadowRadius: 8,
+      shadowOpacity: 0.30,
+      shadowRadius: 4.65,
       elevation: 4,
     },
     large: {
       shadowColor: '#000',
       shadowOffset: {
         width: 0,
-        height: 8,
+        height: 6,
       },
-      shadowOpacity: 0.2,
-      shadowRadius: 16,
-      elevation: 8,
+      shadowOpacity: 0.37,
+      shadowRadius: 7.49,
+      elevation: 6,
     },
     md: {
       shadowColor: '#000',

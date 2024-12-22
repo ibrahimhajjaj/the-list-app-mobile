@@ -13,6 +13,7 @@ import { DraggableList } from '../../components/DraggableList';
 import { AppHeader } from '../../components/AppHeader';
 import { ConfirmationModal } from '../../components/ConfirmationModal';
 import { ListDropdown } from '../../components/ListDropdown';
+import socketService from '../../services/socket';
 
 export default function ListsScreen() {
   const navigation = useNavigation<ListStackScreenProps<'ListsHome'>['navigation']>();
@@ -29,16 +30,51 @@ export default function ListsScreen() {
   const [listToDelete, setListToDelete] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!selectedList) return;
+
+    console.log('[ListsScreen] Joining WebSocket room for list:', selectedList);
+    socketService.joinList(selectedList);
+
+    // Listen for real-time updates
+    if (socketService.socket) {
+      console.log('[ListsScreen] Setting up WebSocket listeners');
+      
+      const onListUpdated = (data: any) => {
+        console.log('[ListsScreen] Received list update:', {
+          listId: data.listId,
+          type: data.type,
+          updatedBy: data.updatedBy
+        });
+        
+        // Refresh lists to get the latest data
+        dispatch(fetchLists());
+      };
+
+      socketService.socket.on('listUpdated', onListUpdated);
+
+      // Cleanup: leave room and remove listeners
+      return () => {
+        console.log('[ListsScreen] Cleaning up WebSocket listeners and leaving room:', selectedList);
+        socketService.socket?.off('listUpdated', onListUpdated);
+        socketService.leaveList(selectedList);
+      };
+    }
+  }, [selectedList]);
+
+  useEffect(() => {
+    console.log('[ListsScreen] Initial lists fetch');
     dispatch(fetchLists());
   }, [dispatch]);
 
   useEffect(() => {
     if (lists?.length > 0 && !selectedList) {
+      console.log('[ListsScreen] Auto-selecting first list:', lists[0]._id);
       setSelectedList(lists[0]._id);
     }
-  }, [lists]);
+  }, [lists, selectedList]);
 
   const handleListPress = (listId: string) => {
+    console.log('[ListsScreen] Selecting list:', listId);
     setSelectedList(listId);
     setIsDropdownOpen(false);
   };
@@ -56,14 +92,16 @@ export default function ListsScreen() {
   const handleToggleItem = async (itemId: string) => {
     if (!selectedList || !selectedListData) return;
 
-    const updatedItems = selectedListData.items.map(item => 
-      item._id === itemId ? { ...item, completed: !item.completed } : item
-    );
-
     try {
+      console.log('[ListsScreen] Toggling item:', itemId);
+      const updatedItems = selectedListData.items.map(item => 
+        item._id === itemId ? { ...item, completed: !item.completed } : item
+      );
+
       await dispatch(updateList(selectedList, { items: updatedItems }));
+      console.log('[ListsScreen] Item toggled successfully');
     } catch (error) {
-      console.error('Failed to toggle item:', error);
+      console.error('[ListsScreen] Failed to toggle item:', error);
     }
   };
 
