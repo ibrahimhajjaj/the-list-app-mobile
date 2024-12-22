@@ -5,7 +5,6 @@ import {
   setLists,
   addList,
   updateList as updateListInStore,
-  deleteList as deleteListFromStore,
   setLoading,
   setError,
   setCurrentList,

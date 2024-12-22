@@ -13,7 +13,6 @@ export type AuthStackParamList = {
 
 export type MainTabParamList = {
   Lists: undefined;
-  SharedLists: undefined;
   Profile: undefined;
 };
 

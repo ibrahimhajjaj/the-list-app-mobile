@@ -24,6 +24,27 @@ import {
   toggleItemCompleteNotifications,
 } from '../../store/slices/settingsSlice';
 
+interface NotificationSettingRowProps {
+  title: string;
+  value: boolean;
+  onToggle: () => void;
+  disabled?: boolean;
+}
+
+function NotificationSettingRow({ title, value, onToggle, disabled = false }: NotificationSettingRowProps) {
+  return (
+    <View style={styles.settingRow}>
+      <Text style={styles.settingText}>{title}</Text>
+      <Switch
+        value={value}
+        onValueChange={onToggle}
+        disabled={disabled}
+        trackColor={{ false: theme.colors.gray, true: theme.colors.primary }}
+      />
+    </View>
+  );
+}
+
 export default function ProfileScreen() {
   const dispatch = useAppDispatch();
   const { user, loading } = useAppSelector((state) => state.auth);
@@ -65,23 +86,6 @@ export default function ProfileScreen() {
       { cancelable: true }
     );
   };
-
-  const NotificationSettingRow = ({ 
-    title, 
-    value, 
-    onToggle, 
-    disabled = false 
-  }) => (
-    <View style={styles.settingRow}>
-      <Text style={styles.settingText}>{title}</Text>
-      <Switch
-        value={value}
-        onValueChange={onToggle}
-        disabled={disabled}
-        trackColor={{ false: theme.colors.gray, true: theme.colors.primary }}
-      />
-    </View>
-  );
 
   return (
     <ScrollView style={commonStyles.container} contentContainerStyle={styles.scrollContent}>

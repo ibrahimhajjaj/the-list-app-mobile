@@ -5,11 +5,15 @@ import { theme } from '../constants/theme';
 import { useNavigation } from '@react-navigation/native';
 import { useAppDispatch, useAppSelector } from '../hooks/redux';
 import { toggleNotifications } from '../store/slices/settingsSlice';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { MainTabParamList } from '../navigation/types';
+
+type NavigationProp = NativeStackNavigationProp<MainTabParamList>;
 
 export function AppHeader() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<NavigationProp>();
   const dispatch = useAppDispatch();
-  const { notificationsEnabled } = useAppSelector((state) => state.settings);
+  const { notificationsEnabled } = useAppSelector((state) => state.settings) || { notificationsEnabled: false };
 
   const handleNotificationToggle = () => {
     dispatch(toggleNotifications());
@@ -34,19 +38,19 @@ export function AppHeader() {
           onPress={handleNotificationToggle}
         >
           {notificationsEnabled ? (
-            <Bell size={24} color={theme.colors.text} />
+            <Bell size={21} color={theme.colors.text} />
           ) : (
-            <BellOff size={24} color={theme.colors.textLight} />
+            <BellOff size={21} color={theme.colors.textLight} />
           )}
         </TouchableOpacity>
         <TouchableOpacity style={styles.iconButton}>
-          <Sun size={24} color={theme.colors.text} />
+          <Sun size={21} color={theme.colors.text} />
         </TouchableOpacity>
         <TouchableOpacity 
           style={styles.profileButton}
           onPress={handleProfilePress}
         >
-          <User size={32} color={theme.colors.text} />
+          <User size={21} color={theme.colors.text} />
         </TouchableOpacity>
       </View>
     </View>
@@ -60,7 +64,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: theme.spacing.m,
     paddingTop: theme.spacing.xl,
-    paddingBottom: theme.spacing.m,
+    paddingBottom: theme.spacing.xs,
     backgroundColor: '#FFFFFF',
     ...theme.shadows.small,
     position: 'absolute',
