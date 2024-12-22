@@ -51,8 +51,17 @@ export const fetchSharedLists = () => async (dispatch: AppDispatch) => {
 
 export const createList = createAsyncThunk(
   'lists/createList',
-  async (data: { title: string }) => {
+  async (data: { title: string }, { dispatch }) => {
     const response = await api.post<List>('/lists', data);
+    
+    // Update stored lists
+    const storedLists = await storage.getLists();
+    const updatedLists = [...storedLists, response.data];
+    await storage.saveLists(updatedLists);
+    
+    // Fetch all lists to ensure we have the latest data
+    dispatch(fetchLists());
+    
     return response.data;
   }
 );

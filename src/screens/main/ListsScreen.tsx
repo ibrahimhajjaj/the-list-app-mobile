@@ -94,10 +94,14 @@ export default function ListsScreen() {
   const handleCreateList = async () => {
     if (!newListName.trim()) return;
     try {
-      await dispatch(createList({ title: newListName }));
+      const result = await dispatch(createList({ title: newListName })).unwrap();
       setNewListName('');
+      // Automatically select the newly created list
+      if (result._id) {
+        handleListPress(result._id);
+      }
     } catch (error) {
-      // Error is handled by the action
+      console.error('Failed to create list:', error);
     }
   };
 
