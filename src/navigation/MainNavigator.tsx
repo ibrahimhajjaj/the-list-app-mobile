@@ -6,7 +6,6 @@ import { theme } from '../constants/theme';
 
 // Navigators and Screens
 import ListStackNavigator from './ListStackNavigator';
-import SharedListsScreen from '../screens/main/SharedListsScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -43,11 +42,6 @@ export default function MainNavigator() {
         name="Lists" 
         component={ListStackNavigator}
         options={{ title: 'My Lists' }}
-      />
-      <Tab.Screen 
-        name="SharedLists" 
-        component={SharedListsScreen}
-        options={{ title: 'Shared Lists', headerShown: true }}
       />
       <Tab.Screen 
         name="Profile" 

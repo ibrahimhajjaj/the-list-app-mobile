@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, TextInput, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, TextInput, Modal, Alert } from 'react-native';
+import { useAppDispatch } from '../hooks/redux';
+import { shareList } from '../store/actions/listActions';
 import { theme } from '../constants/theme';
 
 interface ShareListModalProps {
@@ -9,12 +11,40 @@ interface ShareListModalProps {
 }
 
 export function ShareListModal({ listId, visible, onClose }: ShareListModalProps) {
+  const dispatch = useAppDispatch();
   const [email, setEmail] = useState('');
   const [shareType, setShareType] = useState<'view' | 'edit'>('view');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleShare = () => {
-    // TODO: Implement share functionality
-    onClose();
+  const handleShare = async () => {
+    if (!email.trim()) return;
+
+    try {
+      setIsLoading(true);
+      console.log('Sharing list:', { listId, email, permission: shareType });
+      
+      const result = await dispatch(shareList({ 
+        listId, 
+        data: { email, permission: shareType } 
+      })).unwrap();
+      
+      console.log('List shared successfully:', result);
+      
+      Alert.alert(
+        'Success',
+        'List shared successfully',
+        [{ text: 'OK', onPress: onClose }]
+      );
+      setEmail('');
+    } catch (error: any) {
+      console.error('Error sharing list:', error);
+      Alert.alert(
+        'Error',
+        error.message || 'Failed to share list. Please try again.'
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -69,15 +99,22 @@ export function ShareListModal({ listId, visible, onClose }: ShareListModalProps
             <TouchableOpacity 
               style={[styles.button, styles.closeButton]} 
               onPress={onClose}
+              disabled={isLoading}
             >
               <Text style={styles.closeButtonText}>Close</Text>
             </TouchableOpacity>
             <TouchableOpacity 
-              style={[styles.button, styles.shareButton, !email && styles.shareButtonDisabled]} 
+              style={[
+                styles.button, 
+                styles.shareButton, 
+                (!email || isLoading) && styles.shareButtonDisabled
+              ]} 
               onPress={handleShare}
-              disabled={!email}
+              disabled={!email || isLoading}
             >
-              <Text style={styles.shareButtonText}>Share</Text>
+              <Text style={styles.shareButtonText}>
+                {isLoading ? 'Sharing...' : 'Share'}
+              </Text>
             </TouchableOpacity>
           </View>
         </View>

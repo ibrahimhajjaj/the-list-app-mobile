@@ -93,16 +93,13 @@ export const deleteList = createAsyncThunk(
   }
 );
 
-export const shareList = (listId: string, data: { userId: string; permission: 'view' | 'edit' }) => async (dispatch: AppDispatch) => {
-  try {
-    dispatch(setLoading(true));
-
-    if (!(await isConnected())) {
-      throw new Error('No internet connection');
-    }
+export const shareList = createAsyncThunk(
+  'lists/shareList',
+  async ({ listId, data }: { listId: string; data: { email: string; permission: 'view' | 'edit' } }) => {
+    console.log('Sharing list with data:', { listId, data });
 
     const response = await api.post<List>(`/lists/${listId}/share`, data);
-    dispatch(updateListInStore(response.data));
+    console.log('Share list response:', response.data);
     
     // Update stored lists
     const storedLists = await storage.getLists() as List[];
@@ -112,21 +109,21 @@ export const shareList = (listId: string, data: { userId: string; permission: 'v
     await storage.saveLists(updatedLists);
     
     return response.data;
-  } catch (error: any) {
-    dispatch(setError(error.response?.data?.message || 'Failed to share list'));
-    throw error;
   }
-};
+);
 
-export const unshareList = (listId: string, userId: string) => async (dispatch: AppDispatch) => {
+export const unshareList = (listId: string, email: string) => async (dispatch: AppDispatch) => {
   try {
     dispatch(setLoading(true));
+    console.log('Unsharing list:', { listId, email });
 
     if (!(await isConnected())) {
       throw new Error('No internet connection');
     }
 
-    const response = await api.delete<List>(`/lists/${listId}/share/${userId}`);
+    const response = await api.delete<List>(`/lists/${listId}/share`, { data: { email } });
+    console.log('Unshare list response:', response.data);
+    
     dispatch(updateListInStore(response.data));
     
     // Update stored lists
@@ -136,10 +133,13 @@ export const unshareList = (listId: string, userId: string) => async (dispatch: 
     );
     await storage.saveLists(updatedLists);
     
+    dispatch(setLoading(false));
     return response.data;
   } catch (error: any) {
-    dispatch(setError(error.response?.data?.message || 'Failed to unshare list'));
-    throw error;
+    console.error('Unshare list error:', error.response?.data || error);
+    dispatch(setLoading(false));
+    dispatch(setError(error.response?.data?.error || 'Failed to unshare list'));
+    throw new Error(error.response?.data?.error || 'Failed to unshare list');
   }
 };
 

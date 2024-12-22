@@ -7,16 +7,25 @@ export interface ListItem {
   completed: boolean;
 }
 
+interface SharedUser {
+  user: string;
+  permission: 'view' | 'edit';
+  _id?: string;
+}
+
+interface ListOwner {
+  _id: string;
+  name: string;
+  email: string;
+}
+
 export interface List {
   _id: string;
   title: string;
   description?: string;
   items: ListItem[];
-  owner: string;
-  sharedWith: Array<{
-    userId: string;
-    permission: 'view' | 'edit';
-  }>;
+  owner: ListOwner;
+  sharedWith: SharedUser[];
   createdAt: string;
   updatedAt: string;
   shared?: boolean;
