@@ -15,6 +15,7 @@ export const theme = {
     textSecondary: '#666666',
     border: '#e2e8f0',
     disabled: '#E5E5EA',
+    accent: '#f1f5f9',
   },
   spacing: {
     xs: 4,
@@ -83,6 +84,16 @@ export const theme = {
       shadowOpacity: 0.2,
       shadowRadius: 16,
       elevation: 8,
+    },
+    md: {
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 4,
+      },
+      shadowOpacity: 0.1,
+      shadowRadius: 6,
+      elevation: 3,
     },
   },
   buttons: {

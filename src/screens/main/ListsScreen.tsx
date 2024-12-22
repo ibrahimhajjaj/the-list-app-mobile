@@ -12,6 +12,7 @@ import { List } from '../../store/slices/listSlice';
 import { DraggableList } from '../../components/DraggableList';
 import { AppHeader } from '../../components/AppHeader';
 import { ConfirmationModal } from '../../components/ConfirmationModal';
+import { ListDropdown } from '../../components/ListDropdown';
 
 export default function ListsScreen() {
   const navigation = useNavigation<ListStackScreenProps<'ListsHome'>['navigation']>();
@@ -179,23 +180,14 @@ export default function ListsScreen() {
       >
         {/* My Lists Section with Dropdown */}
         <View style={styles.myListsSection}>
-          <View style={styles.titleRow}>
-            <Text style={styles.sectionTitle}>My Lists</Text>
-            <TouchableOpacity 
-              style={styles.dropdownButton}
-              onPress={() => setIsDropdownOpen(!isDropdownOpen)}
-            >
-              <Text style={styles.dropdownButtonText}>
-                {selectedListData ? selectedListData.title : 'Select a list'}
-              </Text>
-              {isDropdownOpen ? (
-                <ChevronsUpDown size={18} color={theme.colors.textY50} />
-              ) : (
-                <ChevronsUpDown size={18} color={theme.colors.textY50} />
-              )}
-            </TouchableOpacity>
-          </View>
-
+          <ListDropdown
+            lists={lists}
+            selectedList={selectedList}
+            onListPress={handleListPress}
+            isDropdownOpen={isDropdownOpen}
+            onDropdownToggle={() => setIsDropdownOpen(!isDropdownOpen)}
+          />
+          
           {/* New List Creation Row */}
           <View style={styles.createListRow}>
             <TextInput
@@ -216,28 +208,6 @@ export default function ListsScreen() {
               <Text style={styles.createListButtonText}>Create List</Text>
             </TouchableOpacity>
           </View>
-          
-          {isDropdownOpen && lists && lists.length > 0 && (
-            <View style={styles.dropdownList}>
-              {lists.map((item) => (
-                <TouchableOpacity
-                  key={item._id}
-                  style={[
-                    styles.dropdownItem,
-                    selectedList === item._id && styles.dropdownItemSelected
-                  ]}
-                  onPress={() => handleListPress(item._id)}
-                >
-                  <Text style={[
-                    styles.dropdownItemText,
-                    selectedList === item._id && styles.dropdownItemTextSelected
-                  ]}>
-                    {item.title}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
         </View>
 
         {/* Selected List Card */}
@@ -379,7 +349,7 @@ const styles = StyleSheet.create({
   },
   scrollView: {
     flex: 1,
-    marginTop: 80, // Adjust this value based on your header height
+    marginTop: 80,
   },
   scrollContent: {
     paddingTop: theme.spacing.m,
@@ -388,103 +358,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.m,
     paddingVertical: theme.spacing.m,
   },
-  titleRow: {
+  createListRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: theme.spacing.m,
+    gap: theme.spacing.m,
   },
-  sectionTitle: {
-    fontSize: 21,
-    fontWeight: 'bold',
-    color: '#000000',
-  },
-  dropdownButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    padding: theme.spacing.s,
-    borderRadius: theme.borderRadius.m,
+  createListInput: {
     flex: 1,
-    marginLeft: theme.spacing.m,
-    maxWidth: '60%',
-	borderWidth: 1,
-	borderColor: '#e2e8f0',
-  },
-  dropdownButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: theme.colors.text,
-    flex: 1,
-  },
-  dropdownList: {
+    height: 40,
     backgroundColor: '#FFFFFF',
     borderRadius: theme.borderRadius.m,
-    marginTop: theme.spacing.s,
-    ...theme.shadows.small,
-    position: 'absolute',
-    top: '100%',
-    right: theme.spacing.m,
-    left: '40%',
-    zIndex: 1000,
-  },
-  dropdownItem: {
-    padding: theme.spacing.s,
-    borderBottomWidth: 1,
-    boxShadow: 'none',
-    borderBottomColor: '#e2e8f0',
-  },
-  dropdownItemSelected: {
-    backgroundColor: theme.colors.surface,
-  },
-  dropdownItemText: {
-    fontSize: 14,
-    color: theme.colors.text,
-  },
-  dropdownItemTextSelected: {
-    color: theme.colors.primary,
-    fontWeight: '600',
-  },
-  createListSection: {
-    flexDirection: 'row',
-    paddingHorizontal: theme.spacing.m,
-    paddingBottom: theme.spacing.m,
-    alignItems: 'center',
-  },
-  input: {
-    flex: 1,
-    height: 48,
-    backgroundColor: '#FFFFFF',
-    borderRadius: theme.borderRadius.m,
-    paddingHorizontal: theme.spacing.m,
-    marginRight: theme.spacing.m,
-    color: '#000000',
+    paddingHorizontal: theme.spacing.s,
     fontSize: 16,
-    ...theme.shadows.small,
+    color: theme.colors.text,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
   },
-  createButton: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: theme.spacing.l,
-    paddingVertical: theme.spacing.m,
+  createListButton: {
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: theme.spacing.m,
+    paddingVertical: theme.spacing.s,
     borderRadius: theme.borderRadius.m,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  createButtonDisabled: {
-    backgroundColor: '#E5E5EA',
+  createListButtonDisabled: {
+    backgroundColor: theme.colors.disabled,
   },
-  createButtonText: {
+  createListButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-  },
-  listItemsSection: {
-    flex: 1,
-	marginTop: theme.spacing.l,
-  },
-  centerContent: {
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   selectedListCard: {
     backgroundColor: '#FFFFFF',
@@ -582,50 +487,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.m,
     paddingVertical: theme.spacing.s,
   },
-  editTitleButton: {
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: theme.spacing.m,
-    paddingVertical: theme.spacing.s,
-    borderRadius: theme.borderRadius.m,
-  },
-  editTitleButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  createListRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: theme.spacing.m,
-    gap: theme.spacing.m,
-  },
-  createListInput: {
-    flex: 1,
-    height: 40,
-    backgroundColor: '#FFFFFF',
-    borderRadius: theme.borderRadius.m,
-    paddingHorizontal: theme.spacing.s,
-    fontSize: 16,
-    color: theme.colors.text,
-    borderWidth: 1,
-    borderColor: theme.colors.border,
-  },
-  createListButton: {
-    backgroundColor: theme.colors.primary,
-    paddingHorizontal: theme.spacing.m,
-    paddingVertical: theme.spacing.s,
-    borderRadius: theme.borderRadius.m,
+  outlineButton: theme.buttons.outline,
+  deleteButton: theme.buttons.destructive,
+  centerContent: {
     justifyContent: 'center',
     alignItems: 'center',
   },
-  createListButtonDisabled: {
-    backgroundColor: theme.colors.disabled,
+  listItemsSection: {
+    flex: 1,
+    marginTop: theme.spacing.l,
   },
-  createListButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  outlineButton: theme.buttons.outline,
-  deleteButton: theme.buttons.destructive,
 }); 
