@@ -124,7 +124,11 @@ export function ListItem({
               <Pencil size={18} color={colors.foreground} />
             </TouchableOpacity>
             <TouchableOpacity 
-              style={[styles.actionButton, deleteButtonStyle]} 
+              style={[
+                styles.actionButton,
+                deleteButtonStyle,
+                { backgroundColor: colors.destructive }
+              ]} 
               onPress={onDelete}
             >
               <Trash2 size={18} color={colors.destructiveForeground} />

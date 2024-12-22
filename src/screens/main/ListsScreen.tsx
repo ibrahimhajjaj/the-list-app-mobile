@@ -18,7 +18,6 @@ import socketService from '../../services/socket';
 import { storage } from '../../services/storage';
 
 export default function ListsScreen() {
-  const navigation = useNavigation<ListStackScreenProps<'ListsHome'>['navigation']>();
   const dispatch = useAppDispatch();
   const { lists, loading: listsLoading } = useAppSelector((state) => state.lists);
   const [newListName, setNewListName] = useState('');
@@ -361,7 +360,11 @@ export default function ListsScreen() {
                         <Share2 size={18} color={colors.foreground} />
                       </TouchableOpacity>
                       <TouchableOpacity 
-                        style={[styles.actionButton, styles.deleteButton]}
+                        style={[
+                          styles.actionButton,
+                          styles.deleteButton,
+                          { backgroundColor: colors.destructive }
+                        ]}
                         onPress={() => handleDeleteList(selectedListData._id)}
                       >
                         <Trash2 size={20} color={colors.destructiveForeground} />
