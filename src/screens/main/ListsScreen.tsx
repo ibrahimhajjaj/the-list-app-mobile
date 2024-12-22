@@ -14,6 +14,7 @@ import { AppHeader } from '../../components/AppHeader';
 import { ConfirmationModal } from '../../components/ConfirmationModal';
 import { ListDropdown } from '../../components/ListDropdown';
 import socketService from '../../services/socket';
+import { storage } from '../../services/storage';
 
 export default function ListsScreen() {
   const navigation = useNavigation<ListStackScreenProps<'ListsHome'>['navigation']>();
@@ -64,6 +65,15 @@ export default function ListsScreen() {
   useEffect(() => {
     console.log('[ListsScreen] Initial lists fetch');
     dispatch(fetchLists());
+
+    // Load the previously selected list from storage
+    const loadSelectedList = async () => {
+      const savedListId = await storage.getSelectedList();
+      if (savedListId) {
+        setSelectedList(savedListId);
+      }
+    };
+    loadSelectedList();
   }, [dispatch]);
 
   useEffect(() => {
@@ -73,10 +83,12 @@ export default function ListsScreen() {
     }
   }, [lists, selectedList]);
 
-  const handleListPress = (listId: string) => {
+  const handleListPress = async (listId: string) => {
     console.log('[ListsScreen] Selecting list:', listId);
     setSelectedList(listId);
     setIsDropdownOpen(false);
+    // Save the selected list to storage
+    await storage.saveSelectedList(listId);
   };
 
   const handleCreateList = async () => {

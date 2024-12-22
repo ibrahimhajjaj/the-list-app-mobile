@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { storage } from '../../services/storage';
 
 export interface SettingsState {
   notificationsEnabled: boolean;
@@ -19,19 +19,19 @@ const initialState: SettingsState = {
   itemCompleteNotifications: true,
 };
 
-// Load settings from AsyncStorage
+// Load settings from storage service
 export const loadSettings = async () => {
   try {
-    const settings = await AsyncStorage.getItem('userSettings');
+    const settings = await storage.getSettings();
     console.log('[Settings] Loading settings from storage:', settings);
-    return settings ? JSON.parse(settings) : initialState;
+    return settings || initialState;
   } catch (error) {
     console.error('[Settings] Error loading settings:', error);
     return initialState;
   }
 };
 
-// Save settings to AsyncStorage
+// Save settings using storage service
 export const saveSettings = async (state: SettingsState) => {
   try {
     // Create a plain object copy of the state
@@ -43,8 +43,7 @@ export const saveSettings = async (state: SettingsState) => {
       itemEditNotifications: state.itemEditNotifications,
       itemCompleteNotifications: state.itemCompleteNotifications,
     };
-    await AsyncStorage.setItem('userSettings', JSON.stringify(settings));
-    console.log('[Settings] Settings saved to storage:', settings);
+    await storage.saveSettings(settings);
   } catch (error) {
     console.error('[Settings] Error saving settings:', error);
   }

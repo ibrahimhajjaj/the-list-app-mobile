@@ -5,6 +5,8 @@ const STORAGE_KEYS = {
   SHARED_LISTS: '@app:shared_lists',
   AUTH_TOKEN: '@app:auth_token',
   USER_DATA: '@app:user_data',
+  SELECTED_LIST: '@app:selected_list',
+  SETTINGS: '@app:settings',
 };
 
 export const storage = {
@@ -87,6 +89,25 @@ export const storage = {
     }
   },
 
+  async getSettings() {
+    try {
+      const settingsJson = await AsyncStorage.getItem(STORAGE_KEYS.SETTINGS);
+      return settingsJson ? JSON.parse(settingsJson) : null;
+    } catch (error) {
+      console.error('Error reading settings from storage:', error);
+      return null;
+    }
+  },
+
+  async saveSettings(settings: any) {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+      console.log('[Storage] Settings saved successfully:', settings);
+    } catch (error) {
+      console.error('Error saving settings to storage:', error);
+    }
+  },
+
   async clearAll() {
     try {
       await AsyncStorage.multiRemove([
@@ -94,9 +115,32 @@ export const storage = {
         STORAGE_KEYS.SHARED_LISTS,
         STORAGE_KEYS.AUTH_TOKEN,
         STORAGE_KEYS.USER_DATA,
+        STORAGE_KEYS.SELECTED_LIST,
+        STORAGE_KEYS.SETTINGS,
       ]);
     } catch (error) {
       console.error('Error clearing storage:', error);
+    }
+  },
+
+  async saveSelectedList(listId: string | null) {
+    try {
+      if (listId) {
+        await AsyncStorage.setItem(STORAGE_KEYS.SELECTED_LIST, listId);
+      } else {
+        await AsyncStorage.removeItem(STORAGE_KEYS.SELECTED_LIST);
+      }
+    } catch (error) {
+      console.error('Error saving selected list to storage:', error);
+    }
+  },
+
+  async getSelectedList() {
+    try {
+      return await AsyncStorage.getItem(STORAGE_KEYS.SELECTED_LIST);
+    } catch (error) {
+      console.error('Error reading selected list from storage:', error);
+      return null;
     }
   },
 }; 
