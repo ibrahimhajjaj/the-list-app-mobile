@@ -25,7 +25,7 @@ function RootNavigator() {
 
   useEffect(() => {
     if (token) {
-      socketService.connect();
+      socketService.connect(token);
     } else {
       socketService.disconnect();
     }
