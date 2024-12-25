@@ -17,6 +17,20 @@ expo-env.d.ts
 *.key
 *.mobileprovision
 
+# Android/iOS build outputs
+android/app/build/
+android/app/release/
+android/build/
+android/.gradle/
+android/local.properties
+android/*.iml
+ios/build/
+ios/Pods/
+ios/DerivedData/
+ios/*.xcuserstate
+ios/*.xcworkspace/
+ios/Podfile.lock
+
 # Metro
 .metro-health-check*
 
@@ -34,3 +48,9 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
