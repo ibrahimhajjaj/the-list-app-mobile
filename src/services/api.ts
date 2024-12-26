@@ -25,10 +25,6 @@ api.interceptors.request.use(
 // Add response interceptor for better error handling
 api.interceptors.response.use(
   (response) => {
-    console.log('Response:', {
-      status: response.status,
-      data: response.data,
-    });
     return response;
   },
   (error) => {

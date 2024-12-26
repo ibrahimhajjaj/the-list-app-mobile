@@ -33,7 +33,6 @@ export const authService = {
 
   async login(email: string, password: string) {
     try {
-      console.log('[Auth Service] Attempting login:', { email });
       const response = await authApi.post(API_CONFIG.ENDPOINTS.AUTH.LOGIN, { email, password });
       const data = response.data;
       await this.setToken(data.token);
@@ -46,7 +45,6 @@ export const authService = {
 
   async register(name: string, email: string, password: string) {
     try {
-      console.log('[Auth Service] Attempting registration:', { name, email });
       const response = await authApi.post(API_CONFIG.ENDPOINTS.AUTH.REGISTER, { name, email, password });
       const data = response.data;
       await this.setToken(data.token);
@@ -71,7 +69,6 @@ export const authService = {
       const user = await userService.getProfile();
       return { user, token };
     } catch (error: any) {
-      console.error('[Auth Service] Session validation error:', error.response?.data || error.message);
       throw error;
     }
   }

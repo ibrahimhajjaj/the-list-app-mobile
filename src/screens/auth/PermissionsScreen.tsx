@@ -7,35 +7,42 @@ import * as IntentLauncher from 'expo-intent-launcher';
 import Constants from 'expo-constants';
 import { theme } from '../../constants/theme';
 import { useThemeColors } from '../../constants/theme';
+import { checkPermissions } from '../../utils/permissions';
+import type { AuthStackScreenProps } from '../../navigation/types';
 
 type PermissionStatus = 'pending' | 'granted' | 'denied';
 
 export function PermissionsScreen() {
-  const navigation = useNavigation();
+  const navigation = useNavigation<AuthStackScreenProps<'Permissions'>['navigation']>();
   const colors = useThemeColors();
   const [notificationStatus, setNotificationStatus] = useState<PermissionStatus>('pending');
   const [batteryOptStatus, setBatteryOptStatus] = useState<PermissionStatus>('pending');
   const [isRequestingBatteryOpt, setIsRequestingBatteryOpt] = useState(false);
 
   useEffect(() => {
-    checkPermissions();
+    checkAndNavigate();
   }, []);
 
-  const checkPermissions = async () => {
-    // Check notification permission
-    const { status } = await Notifications.getPermissionsAsync();
-    setNotificationStatus(status === 'granted' ? 'granted' : 'denied');
-
-    // Check battery optimization status (Android only)
-    if (Platform.OS === 'android') {
-      const batteryOptimizationEnabled = await Battery.isBatteryOptimizationEnabledAsync();
-      setBatteryOptStatus(batteryOptimizationEnabled ? 'denied' : 'granted');
+  const checkAndNavigate = async () => {
+    const permissions = await checkPermissions();
+    
+    // Update UI states
+    setNotificationStatus(permissions.notifications ? 'granted' : 'denied');
+    setBatteryOptStatus(permissions.batteryOptimization ? 'granted' : 'denied');
+    
+    // If all permissions are granted, navigate to login
+    if (permissions.notifications && permissions.batteryOptimization) {
+      navigation.replace('Login');
+      return;
     }
   };
 
   const requestNotificationPermission = async () => {
     const { status } = await Notifications.requestPermissionsAsync();
     setNotificationStatus(status === 'granted' ? 'granted' : 'denied');
+    
+    // Check if we can navigate after this permission change
+    checkAndNavigate();
   };
 
   const requestBatteryOptimization = async () => {
@@ -44,32 +51,21 @@ export function PermissionsScreen() {
         setIsRequestingBatteryOpt(true);
         
         const packageName = Constants.expoConfig?.android?.package || 'com.ibrahimwithi.thelistapp';
-
-        console.log('[Battery Opt] Starting request with package:', packageName);
-        console.log('[Battery Opt] Platform version:', Platform.Version);
         
-        const initialStatus = await Battery.isBatteryOptimizationEnabledAsync();
-        console.log('[Battery Opt] Initial battery optimization status:', initialStatus);
-
         try {
           // Try using Linking first
           const canOpenSettings = await Linking.canOpenURL('package:' + packageName);
-          console.log('[Battery Opt] Can open settings:', canOpenSettings);
           
           if (canOpenSettings) {
             await Linking.openURL('package:' + packageName);
-            console.log('[Battery Opt] Opened settings via Linking');
           } else {
             // Fallback to IntentLauncher
-            console.log('[Battery Opt] Falling back to IntentLauncher');
-            const result = await IntentLauncher.startActivityAsync(
+            await IntentLauncher.startActivityAsync(
               'android.settings.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS',
               { data: 'package:' + packageName }
             );
-            console.log('[Battery Opt] IntentLauncher result:', result);
           }
         } catch (error) {
-          console.log('[Battery Opt] Error opening settings:', error);
           // Final fallback: open battery settings
           await IntentLauncher.startActivityAsync(
             'android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS'
@@ -78,29 +74,22 @@ export function PermissionsScreen() {
 
         // Wait a bit and check the status again
         setTimeout(async () => {
-          const batteryOptimizationEnabled = await Battery.isBatteryOptimizationEnabledAsync();
-          console.log('[Battery Opt] Post-request battery optimization status:', batteryOptimizationEnabled);
-          setBatteryOptStatus(batteryOptimizationEnabled ? 'denied' : 'granted');
+          const permissions = await checkPermissions();
+          setBatteryOptStatus(permissions.batteryOptimization ? 'granted' : 'denied');
           setIsRequestingBatteryOpt(false);
+          
+          // Check if we can navigate after this permission change
+          checkAndNavigate();
         }, 1000);
 
       } catch (error) {
-        console.error('[Battery Opt] Error:', error);
-        if (error instanceof Error) {
-          console.error('[Battery Opt] Error details:', {
-            message: error.message,
-            stack: error.stack
-          });
-        }
         setIsRequestingBatteryOpt(false);
       }
-    } else {
-      console.log('[Battery Opt] Skipped - Platform:', Platform.OS, 'isRequesting:', isRequestingBatteryOpt);
     }
   };
 
   const handleContinue = () => {
-    navigation.navigate('Login' as never);
+    navigation.navigate('Login');
   };
 
   return (
