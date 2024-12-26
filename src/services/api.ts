@@ -1,5 +1,5 @@
 import axios from 'axios';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { authService } from './auth';
 import Constants from 'expo-constants';
 
 const API_URL = Constants.expoConfig?.extra?.API_URL || 'http://localhost:5001/api';
@@ -16,7 +16,7 @@ const api = axios.create({
 // Add token to requests if it exists
 api.interceptors.request.use(
   async (config) => {
-    const token = await AsyncStorage.getItem('token');
+    const token = await authService.getStoredToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }

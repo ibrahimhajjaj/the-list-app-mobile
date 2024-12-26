@@ -1,9 +1,11 @@
 import { io, Socket } from 'socket.io-client';
-import { store } from '../store/store';
-import { updateList } from '../store/slices/listSlice';
 import { WS_URL } from '../config';
-import { shouldShowNotification } from '../store/slices/settingsSlice';
 import * as Notifications from 'expo-notifications';
+import { Platform } from 'react-native';
+import { store } from '../store/store';
+import { authService } from './auth';
+import { updateList } from '../store/slices/listSlice';
+import { shouldShowNotification } from '../store/slices/settingsSlice';
 
 class SocketService {
   private _socket: Socket | null = null;

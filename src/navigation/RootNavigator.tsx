@@ -10,16 +10,24 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
   const dispatch = useAppDispatch();
-  const { token } = useAppSelector((state) => state.auth);
+  const { token, loading } = useAppSelector((state) => state.auth);
 
   useEffect(() => {
-    dispatch(loadUser());
-  }, [dispatch]);
+    if (token && !loading) {
+      dispatch(loadUser());
+    }
+  }, [token, dispatch]);
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       {!token ? (
-        <Stack.Screen name="Auth" component={AuthNavigator} />
+        <Stack.Screen 
+          name="Auth" 
+          component={AuthNavigator}
+          options={{
+            animationTypeForReplace: !token ? 'pop' : 'push',
+          }}
+        />
       ) : (
         <Stack.Screen name="Main" component={MainNavigator} />
       )}

@@ -1,5 +1,5 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { authService } from '../../services/auth';
 import * as api from '../../services/api';
 
 interface User {
@@ -33,9 +33,7 @@ export const loginUser = createAsyncThunk(
   'auth/login',
   async ({ email, password }: { email: string; password: string }, { rejectWithValue }) => {
     try {
-      const data = await api.login(email, password);
-      await AsyncStorage.setItem('token', data.token);
-      return data;
+      return await authService.login(email, password);
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.error || 'Login failed');
     }
@@ -47,9 +45,8 @@ export const registerUser = createAsyncThunk(
   async ({ name, email, password }: { name: string; email: string; password: string }, { rejectWithValue }) => {
     try {
       console.log('Starting registration process for:', email);
-      const data = await api.register(name, email, password);
+      const data = await authService.register(name, email, password);
       console.log('Registration successful:', data);
-      await AsyncStorage.setItem('token', data.token);
       return data;
     } catch (error: any) {
       console.error('Registration thunk error:', {
@@ -70,13 +67,8 @@ export const loadUser = createAsyncThunk(
   'auth/loadUser',
   async (_, { rejectWithValue }) => {
     try {
-      const token = await AsyncStorage.getItem('token');
-      if (!token) throw new Error('No token found');
-      
-      const user = await api.getProfile();
-      return { user, token };
+      return await authService.validateSession();
     } catch (error: any) {
-      await AsyncStorage.removeItem('token');
       return rejectWithValue(error.message);
     }
   }
@@ -102,7 +94,8 @@ const authSlice = createSlice({
       state.user = null;
       state.token = null;
       state.error = null;
-      AsyncStorage.removeItem('token');
+      state.loading = false;
+      authService.logout(); // Don't need to await here as it's not critical
     },
     clearError: (state) => {
       state.error = null;
@@ -119,6 +112,7 @@ const authSlice = createSlice({
         state.loading = false;
         state.user = action.payload.user;
         state.token = action.payload.token;
+        state.error = null;
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.loading = false;
@@ -137,6 +131,7 @@ const authSlice = createSlice({
         state.loading = false;
         state.user = action.payload.user;
         state.token = action.payload.token;
+        state.error = null;
         state.lastAttempt = {
           action: 'register',
           timestamp: Date.now(),
@@ -167,6 +162,7 @@ const authSlice = createSlice({
         state.loading = false;
         state.user = action.payload.user;
         state.token = action.payload.token;
+        state.error = null;
       })
       .addCase(loadUser.rejected, (state, action) => {
         state.loading = false;

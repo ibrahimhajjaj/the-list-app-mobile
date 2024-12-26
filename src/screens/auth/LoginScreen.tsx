@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -27,11 +27,30 @@ export default function LoginScreen({ navigation }: Props) {
   const { loading, error } = useAppSelector((state) => state.auth);
   const colors = useThemeColors();
 
+  // Clear any auth errors when component mounts or unmounts
+  useEffect(() => {
+    dispatch(clearError());
+    return () => {
+      dispatch(clearError());
+    };
+  }, [dispatch]);
+
   const handleLogin = async () => {
     if (!email || !password) {
+      // Show validation error instead of attempting login
       return;
     }
-    dispatch(loginUser({ email, password }));
+
+    try {
+      const resultAction = await dispatch(loginUser({ email, password })).unwrap();
+      if (loginUser.fulfilled.match(resultAction)) {
+        // Successfully logged in, navigation will be handled by RootNavigator
+        console.log('[Login] Login successful');
+      }
+    } catch (err) {
+      // Error is already handled by the auth slice
+      console.error('[Login] Login failed:', err);
+    }
   };
 
   const navigateToRegister = () => {
@@ -39,6 +58,9 @@ export default function LoginScreen({ navigation }: Props) {
     navigation.navigate('Register');
   };
 
+  // Only show user-facing errors
+  const shouldShowError = error && error !== 'No token found';
+  
   return (
     <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: colors.background }]}
@@ -59,7 +81,7 @@ export default function LoginScreen({ navigation }: Props) {
         <View style={styles.formContainer}>
           <Text style={[styles.title, { color: colors.foreground }]}>Welcome Back</Text>
           
-          {error && (
+          {shouldShowError && (
             <View style={[styles.errorContainer, { backgroundColor: colors.destructive + '15' }]}>
               <Text style={[styles.errorText, { color: colors.secondary }]}>{error}</Text>
             </View>

@@ -13,7 +13,7 @@ import {
 } from 'react-native';
 import { AuthStackScreenProps } from '../../navigation/types';
 import { useAppDispatch, useAppSelector } from '../../hooks/redux';
-import { registerUser } from '../../store/slices/authSlice';
+import { registerUser, clearError } from '../../store/slices/authSlice';
 import { theme } from '../../constants/theme';
 import { useThemeColors } from '../../constants/theme';
 
@@ -23,27 +23,65 @@ export default function RegisterScreen({ navigation }: AuthStackScreenProps<'Reg
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showError, setShowError] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
   const colors = useThemeColors();
 
+  // Clear any auth errors when component mounts or unmounts
   useEffect(() => {
-    if (error) {
-      setShowError(true);
+    dispatch(clearError());
+    return () => {
+      dispatch(clearError());
+    };
+  }, [dispatch]);
+
+  // Reset validation error when inputs change
+  useEffect(() => {
+    if (validationError) {
+      setValidationError(null);
     }
-  }, [error, lastAttempt]);
+  }, [name, email, password]);
+
+  const validateInputs = (): boolean => {
+    if (!name.trim()) {
+      setValidationError('Please enter your name');
+      return false;
+    }
+    if (!email.trim()) {
+      setValidationError('Please enter your email');
+      return false;
+    }
+    if (!password || password.length < 6) {
+      setValidationError('Password must be at least 6 characters');
+      return false;
+    }
+    return true;
+  };
 
   const handleRegister = async () => {
+    if (!validateInputs()) {
+      return;
+    }
+
     try {
-      const resultAction = await dispatch(registerUser({ name, email, password }));
+      const resultAction = await dispatch(registerUser({ 
+        name: name.trim(), 
+        email: email.trim(), 
+        password 
+      })).unwrap();
       
       if (registerUser.fulfilled.match(resultAction)) {
-        // The root navigator will automatically switch to Main screen
-        // when the token is set in the Redux store
+        // Successfully registered, navigation will be handled by RootNavigator
+        console.log('[Register] Registration successful');
       }
     } catch (err) {
-      console.error('Registration error:', err);
+      // Error is already handled by the auth slice
+      console.error('[Register] Registration failed:', err);
     }
   };
+
+  // Only show user-facing errors
+  const shouldShowError = (error && error !== 'No token found') || validationError;
+  const errorMessage = validationError || error;
 
   return (
     <KeyboardAvoidingView
@@ -65,21 +103,16 @@ export default function RegisterScreen({ navigation }: AuthStackScreenProps<'Reg
         <View style={styles.formContainer}>
           <Text style={[styles.title, { color: colors.foreground }]}>Create Account</Text>
           
-          {showError && (
+          {shouldShowError && (
             <View style={[styles.errorContainer, { backgroundColor: colors.destructive + '15' }]}>
               <Text style={[styles.errorText, { color: colors.destructive }]}>
-                {error || 'An error occurred during registration'}
+                {errorMessage}
               </Text>
               {lastAttempt?.details?.status && (
                 <Text style={[styles.errorDetail, { color: colors.destructive }]}>
                   Status: {lastAttempt.details.status}
                 </Text>
               )}
-              <TouchableOpacity onPress={() => setShowError(false)}>
-                <Text style={[styles.dismissText, { color: colors.primary }]}>
-                  Dismiss
-                </Text>
-              </TouchableOpacity>
             </View>
           )}
 
