@@ -1,6 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { authService } from '../../services/auth';
-import * as api from '../../services/api';
+import { userService } from '../../services/user';
 
 interface User {
   _id: string;
@@ -78,7 +78,7 @@ export const updateUser = createAsyncThunk(
   'auth/updateUser',
   async (data: { name?: string; email?: string; password?: string }, { rejectWithValue }) => {
     try {
-      const user = await api.updateProfile(data);
+      const user = await userService.updateProfile(data);
       return user;
     } catch (error: any) {
       return rejectWithValue(error.response?.data?.error || 'Update failed');

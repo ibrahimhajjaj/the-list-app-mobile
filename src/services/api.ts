@@ -1,16 +1,10 @@
 import axios from 'axios';
 import { authService } from './auth';
-import Constants from 'expo-constants';
-
-const API_URL = Constants.expoConfig?.extra?.API_URL || 'http://localhost:5001/api';
-
-console.log('API_URL:', API_URL);
+import { API_CONFIG } from '../config/api';
 
 const api = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+  baseURL: API_CONFIG.BASE_URL,
+  headers: API_CONFIG.HEADERS,
 });
 
 // Add token to requests if it exists
@@ -54,67 +48,19 @@ api.interceptors.response.use(
   }
 );
 
-// Auth endpoints
-export const login = async (email: string, password: string) => {
-  try {
-    console.log('Attempting login with:', { email });
-    const response = await api.post('/users/login', { email, password });
-    return response.data;
-  } catch (error: any) {
-    console.error('Login error details:', {
-      message: error.message,
-      response: error.response?.data,
-      status: error.response?.status,
-    });
-    throw error;
-  }
-};
-
-export const register = async (name: string, email: string, password: string) => {
-  try {
-    console.log('Attempting registration with:', { name, email });
-    const response = await api.post('/users/register', { name, email, password });
-    console.log('Registration successful:', response.data);
-    return response.data;
-  } catch (error: any) {
-    console.error('Registration error details:', {
-      message: error.message,
-      response: error.response?.data,
-      status: error.response?.status,
-    });
-    throw error;
-  }
-};
-
-export const getProfile = async () => {
-  const response = await api.get('/users/profile');
-  return response.data;
-};
-
-export const updateProfile = async (data: { name?: string; email?: string; password?: string }) => {
-  const response = await api.patch('/users/profile', data);
-  return response.data;
-};
-
-// User search endpoints
-export const searchUsers = async (query: string) => {
-  const response = await api.get(`/users/search?q=${encodeURIComponent(query)}`);
-  return response.data;
-};
-
 // List sharing endpoints
 export const shareList = async (listId: string, userId: string, permission: 'view' | 'edit') => {
-  const response = await api.post(`/lists/${listId}/share`, { userId, permission });
+  const response = await api.post(API_CONFIG.ENDPOINTS.LISTS.SHARE(listId), { userId, permission });
   return response.data;
 };
 
 export const removeShare = async (listId: string, userId: string) => {
-  const response = await api.delete(`/lists/${listId}/share`, { data: { userId } });
+  const response = await api.delete(API_CONFIG.ENDPOINTS.LISTS.SHARE(listId), { data: { userId } });
   return response.data;
 };
 
 export const getSharedUsers = async (listId: string) => {
-  const response = await api.get(`/lists/${listId}/share`);
+  const response = await api.get(API_CONFIG.ENDPOINTS.LISTS.SHARE(listId));
   return response.data;
 };
 

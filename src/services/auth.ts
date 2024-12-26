@@ -1,12 +1,18 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as api from './api';
+import axios from 'axios';
+import { API_CONFIG } from '../config/api';
+import { userService } from './user';
 
-const TOKEN_KEY = '@app:auth_token';
+// Create a separate axios instance for auth operations only
+const authApi = axios.create({
+  baseURL: API_CONFIG.BASE_URL,
+  headers: API_CONFIG.HEADERS,
+});
 
 export const authService = {
   async getStoredToken(): Promise<string | null> {
     try {
-      return await AsyncStorage.getItem(TOKEN_KEY);
+      return await AsyncStorage.getItem(API_CONFIG.TOKEN_KEY);
     } catch (error) {
       console.error('[Auth Service] Error getting token:', error);
       return null;
@@ -16,9 +22,9 @@ export const authService = {
   async setToken(token: string | null): Promise<void> {
     try {
       if (token) {
-        await AsyncStorage.setItem(TOKEN_KEY, token);
+        await AsyncStorage.setItem(API_CONFIG.TOKEN_KEY, token);
       } else {
-        await AsyncStorage.removeItem(TOKEN_KEY);
+        await AsyncStorage.removeItem(API_CONFIG.TOKEN_KEY);
       }
     } catch (error) {
       console.error('[Auth Service] Error setting token:', error);
@@ -26,15 +32,29 @@ export const authService = {
   },
 
   async login(email: string, password: string) {
-    const data = await api.login(email, password);
-    await this.setToken(data.token);
-    return data;
+    try {
+      console.log('[Auth Service] Attempting login:', { email });
+      const response = await authApi.post(API_CONFIG.ENDPOINTS.AUTH.LOGIN, { email, password });
+      const data = response.data;
+      await this.setToken(data.token);
+      return data;
+    } catch (error: any) {
+      console.error('[Auth Service] Login error:', error.response?.data || error.message);
+      throw error;
+    }
   },
 
   async register(name: string, email: string, password: string) {
-    const data = await api.register(name, email, password);
-    await this.setToken(data.token);
-    return data;
+    try {
+      console.log('[Auth Service] Attempting registration:', { name, email });
+      const response = await authApi.post(API_CONFIG.ENDPOINTS.AUTH.REGISTER, { name, email, password });
+      const data = response.data;
+      await this.setToken(data.token);
+      return data;
+    } catch (error: any) {
+      console.error('[Auth Service] Registration error:', error.response?.data || error.message);
+      throw error;
+    }
   },
 
   async logout(): Promise<void> {
@@ -42,12 +62,17 @@ export const authService = {
   },
 
   async validateSession() {
-    const token = await this.getStoredToken();
-    if (!token) {
-      throw new Error('No token found');
+    try {
+      const token = await this.getStoredToken();
+      if (!token) {
+        throw new Error('No token found');
+      }
+      
+      const user = await userService.getProfile();
+      return { user, token };
+    } catch (error: any) {
+      console.error('[Auth Service] Session validation error:', error.response?.data || error.message);
+      throw error;
     }
-    
-    const user = await api.getProfile();
-    return { user, token };
   }
 }; 
