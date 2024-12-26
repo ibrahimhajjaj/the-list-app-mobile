@@ -1,42 +1,14 @@
-import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice } from '@reduxjs/toolkit';
 import { fetchLists, createList, updateListItem, deleteListItem, deleteList } from '../actions/listActions';
-
-export interface ListItem {
-  _id?: string;
-  text: string;
-  completed: boolean;
-}
-
-interface SharedUser {
-  user: string;
-  permission: 'view' | 'edit';
-  _id?: string;
-}
-
-interface ListOwner {
-  _id: string;
-  name: string;
-  email: string;
-}
-
-export interface List {
-  _id: string;
-  title: string;
-  description?: string;
-  items: ListItem[];
-  owner: ListOwner;
-  sharedWith: SharedUser[];
-  createdAt: string;
-  updatedAt: string;
-  shared?: boolean;
-}
-
-interface ListsState {
-  lists: List[];
-  currentList: List | null;
-  loading: boolean;
-  error: string | null;
-}
+import { List, ListsState } from '../../types/list';
+import {
+  setLists,
+  setCurrentList,
+  addList,
+  updateListInStore,
+  setLoading,
+  setError,
+} from '../actions/listActionCreators';
 
 const initialState: ListsState = {
   lists: [],
@@ -48,48 +20,47 @@ const initialState: ListsState = {
 const listSlice = createSlice({
   name: 'lists',
   initialState,
-  reducers: {
-    setLists: (state, action: PayloadAction<List[]>) => {
-      state.lists = action.payload.map(list => ({
-        ...list,
-        shared: list.sharedWith.length > 0
-      }));
-    },
-    setCurrentList: (state, action: PayloadAction<List>) => {
-      state.currentList = {
-        ...action.payload,
-        shared: action.payload.sharedWith.length > 0
-      };
-    },
-    addList: (state, action: PayloadAction<List>) => {
-      const newList = {
-        ...action.payload,
-        shared: action.payload.sharedWith.length > 0
-      };
-      state.lists.push(newList);
-    },
-    updateList: (state, action: PayloadAction<List>) => {
-      const updatedList = {
-        ...action.payload,
-        shared: action.payload.sharedWith.length > 0
-      };
-      const index = state.lists.findIndex(list => list._id === updatedList._id);
-      if (index !== -1) {
-        state.lists[index] = updatedList;
-      }
-      if (state.currentList?._id === updatedList._id) {
-        state.currentList = updatedList;
-      }
-    },
-    setLoading: (state, action: PayloadAction<boolean>) => {
-      state.loading = action.payload;
-    },
-    setError: (state, action: PayloadAction<string | null>) => {
-      state.error = action.payload;
-    },
-  },
+  reducers: {},
   extraReducers: (builder) => {
     builder
+      .addCase(setLists, (state, action) => {
+        state.lists = action.payload.map(list => ({
+          ...list,
+          shared: list.sharedWith.length > 0
+        }));
+      })
+      .addCase(setCurrentList, (state, action) => {
+        state.currentList = {
+          ...action.payload,
+          shared: action.payload.sharedWith.length > 0
+        };
+      })
+      .addCase(addList, (state, action) => {
+        const newList = {
+          ...action.payload,
+          shared: action.payload.sharedWith.length > 0
+        };
+        state.lists.push(newList);
+      })
+      .addCase(updateListInStore, (state, action) => {
+        const updatedList = {
+          ...action.payload,
+          shared: action.payload.sharedWith.length > 0
+        };
+        const index = state.lists.findIndex(list => list._id === updatedList._id);
+        if (index !== -1) {
+          state.lists[index] = updatedList;
+        }
+        if (state.currentList?._id === updatedList._id) {
+          state.currentList = updatedList;
+        }
+      })
+      .addCase(setLoading, (state, action) => {
+        state.loading = action.payload;
+      })
+      .addCase(setError, (state, action) => {
+        state.error = action.payload;
+      })
       .addCase(fetchLists.pending, (state) => {
         state.loading = true;
         state.error = null;
@@ -152,14 +123,5 @@ const listSlice = createSlice({
       });
   },
 });
-
-export const {
-  setLists,
-  setCurrentList,
-  addList,
-  updateList,
-  setLoading,
-  setError,
-} = listSlice.actions;
 
 export default listSlice.reducer; 

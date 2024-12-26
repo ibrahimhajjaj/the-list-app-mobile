@@ -17,17 +17,17 @@ export interface ProfileUpdateData {
 
 export const userService = {
   async getProfile(): Promise<UserProfile> {
-    const response = await api.get(API_CONFIG.ENDPOINTS.AUTH.PROFILE);
+    const response = await api.get<UserProfile>(API_CONFIG.ENDPOINTS.AUTH.PROFILE);
     return response.data;
   },
 
   async updateProfile(data: ProfileUpdateData): Promise<UserProfile> {
-    const response = await api.patch(API_CONFIG.ENDPOINTS.AUTH.PROFILE, data);
+    const response = await api.patch<UserProfile>(API_CONFIG.ENDPOINTS.AUTH.PROFILE, data);
     return response.data;
   },
 
   async searchUsers(query: string): Promise<UserProfile[]> {
-    const response = await api.get(`${API_CONFIG.ENDPOINTS.AUTH.SEARCH}?q=${encodeURIComponent(query)}`);
+    const response = await api.get<UserProfile[]>(`${API_CONFIG.ENDPOINTS.AUTH.SEARCH}?q=${encodeURIComponent(query)}`);
     return response.data;
   },
 }; 

@@ -1,7 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { API_CONFIG } from '../config/api';
-import { userService } from './user';
+import { storage } from './storage';
+import type { AuthResponse, LoginCredentials, RegisterCredentials } from '../types/auth';
 
 // Create a separate axios instance for auth operations only
 const authApi = axios.create({
@@ -11,29 +11,16 @@ const authApi = axios.create({
 
 export const authService = {
   async getStoredToken(): Promise<string | null> {
-    try {
-      return await AsyncStorage.getItem(API_CONFIG.TOKEN_KEY);
-    } catch (error) {
-      console.error('[Auth Service] Error getting token:', error);
-      return null;
-    }
+    return storage.getAuthToken();
   },
 
   async setToken(token: string | null): Promise<void> {
-    try {
-      if (token) {
-        await AsyncStorage.setItem(API_CONFIG.TOKEN_KEY, token);
-      } else {
-        await AsyncStorage.removeItem(API_CONFIG.TOKEN_KEY);
-      }
-    } catch (error) {
-      console.error('[Auth Service] Error setting token:', error);
-    }
+    await storage.saveAuthToken(token);
   },
 
-  async login(email: string, password: string) {
+  async login(email: string, password: string): Promise<AuthResponse> {
     try {
-      const response = await authApi.post(API_CONFIG.ENDPOINTS.AUTH.LOGIN, { email, password });
+      const response = await authApi.post<AuthResponse>(API_CONFIG.ENDPOINTS.AUTH.LOGIN, { email, password });
       const data = response.data;
       await this.setToken(data.token);
       return data;
@@ -43,9 +30,9 @@ export const authService = {
     }
   },
 
-  async register(name: string, email: string, password: string) {
+  async register(name: string, email: string, password: string): Promise<AuthResponse> {
     try {
-      const response = await authApi.post(API_CONFIG.ENDPOINTS.AUTH.REGISTER, { name, email, password });
+      const response = await authApi.post<AuthResponse>(API_CONFIG.ENDPOINTS.AUTH.REGISTER, { name, email, password });
       const data = response.data;
       await this.setToken(data.token);
       return data;
@@ -66,8 +53,8 @@ export const authService = {
         throw new Error('No token found');
       }
       
-      const user = await userService.getProfile();
-      return { user, token };
+      const response = await authApi.get<AuthResponse>(API_CONFIG.ENDPOINTS.AUTH.PROFILE);
+      return { user: response.data.user, token };
     } catch (error: any) {
       throw error;
     }

@@ -1,24 +1,25 @@
 import { createAsyncThunk } from '@reduxjs/toolkit';
 import api from '../../services/api';
 import { storage } from '../../services/storage';
+import { List } from '../../types/list';
+import { DeleteListPayload, DeleteListItemPayload, ShareListPayload, UpdateListItemPayload } from '../types/listActionTypes';
+import { AppDispatch } from '..';
+import NetInfo from '@react-native-community/netinfo';
 import {
   setLists,
   addList,
-  updateList as updateListInStore,
+  updateListInStore,
   setLoading,
   setError,
   setCurrentList,
-} from '../slices/listSlice';
-import { AppDispatch } from '..';
-import NetInfo from '@react-native-community/netinfo';
-import { List } from '../slices/listSlice';
+} from './listActionCreators';
 
 const isConnected = async () => {
   const netInfo = await NetInfo.fetch();
   return netInfo.isConnected;
 };
 
-export const fetchLists = createAsyncThunk(
+export const fetchLists = createAsyncThunk<List[]>(
   'lists/fetchLists',
   async () => {
     const response = await api.get<List[]>('/lists');
@@ -49,9 +50,9 @@ export const fetchSharedLists = () => async (dispatch: AppDispatch) => {
   }
 };
 
-export const createList = createAsyncThunk(
+export const createList = createAsyncThunk<List, { title: string }>(
   'lists/createList',
-  async (data: { title: string }, { dispatch }) => {
+  async (data, { dispatch }) => {
     const response = await api.post<List>('/lists', data);
     
     // Update stored lists
@@ -59,8 +60,8 @@ export const createList = createAsyncThunk(
     const updatedLists = [...storedLists, response.data];
     await storage.saveLists(updatedLists);
     
-    // Fetch all lists to ensure we have the latest data
-    dispatch(fetchLists());
+    // Add to store immediately
+    dispatch(addList(response.data));
     
     return response.data;
   }
@@ -93,30 +94,24 @@ export const updateList = (listId: string, updates: Partial<Omit<List, '_id' | '
   }
 };
 
-export const deleteList = createAsyncThunk(
+export const deleteList = createAsyncThunk<DeleteListPayload, string>(
   'lists/deleteList',
-  async (listId: string, { dispatch, getState }) => {
+  async (listId, { dispatch }) => {
     await api.delete(`/lists/${listId}`);
     
-    // Get current lists from state
-    const state = getState() as { lists: { lists: List[] } };
-    const remainingLists = state.lists.lists.filter(list => list._id !== listId);
-    
     // Update stored lists
+    const storedLists = await storage.getLists() as List[];
+    const remainingLists = storedLists.filter(list => list._id !== listId);
     await storage.saveLists(remainingLists);
     
-    // Return only the deleted ID since selection is handled in the component
     return { deletedId: listId };
   }
 );
 
-export const shareList = createAsyncThunk(
+export const shareList = createAsyncThunk<List, ShareListPayload>(
   'lists/shareList',
-  async ({ listId, data }: { listId: string; data: { email: string; permission: 'view' | 'edit' } }) => {
-    console.log('Sharing list with data:', { listId, data });
-
+  async ({ listId, data }) => {
     const response = await api.post<List>(`/lists/${listId}/share`, data);
-    console.log('Share list response:', response.data);
     
     // Update stored lists
     const storedLists = await storage.getLists() as List[];
@@ -132,15 +127,12 @@ export const shareList = createAsyncThunk(
 export const unshareList = (listId: string, email: string) => async (dispatch: AppDispatch) => {
   try {
     dispatch(setLoading(true));
-    console.log('Unsharing list:', { listId, email });
 
     if (!(await isConnected())) {
       throw new Error('No internet connection');
     }
 
     const response = await api.delete<List>(`/lists/${listId}/share`, { data: { email } });
-    console.log('Unshare list response:', response.data);
-    
     dispatch(updateListInStore(response.data));
     
     // Update stored lists
@@ -150,13 +142,12 @@ export const unshareList = (listId: string, email: string) => async (dispatch: A
     );
     await storage.saveLists(updatedLists);
     
-    dispatch(setLoading(false));
     return response.data;
   } catch (error: any) {
-    console.error('Unshare list error:', error.response?.data || error);
-    dispatch(setLoading(false));
     dispatch(setError(error.response?.data?.error || 'Failed to unshare list'));
-    throw new Error(error.response?.data?.error || 'Failed to unshare list');
+    throw error;
+  } finally {
+    dispatch(setLoading(false));
   }
 };
 
@@ -189,17 +180,17 @@ export const fetchListById = (listId: string) => async (dispatch: AppDispatch) =
   }
 };
 
-export const updateListItem = createAsyncThunk(
+export const updateListItem = createAsyncThunk<List, UpdateListItemPayload>(
   'lists/updateListItem',
-  async ({ listId, itemId, updates }: { listId: string; itemId: string; updates: Partial<List['items'][0]> }) => {
+  async ({ listId, itemId, updates }) => {
     const response = await api.patch<List>(`/lists/${listId}/items/${itemId}`, updates);
     return response.data;
   }
 );
 
-export const deleteListItem = createAsyncThunk(
+export const deleteListItem = createAsyncThunk<DeleteListItemPayload, DeleteListItemPayload>(
   'lists/deleteListItem',
-  async ({ listId, itemId }: { listId: string; itemId: string }) => {
+  async ({ listId, itemId }) => {
     await api.delete(`/lists/${listId}/items/${itemId}`);
     return { listId, itemId };
   }
