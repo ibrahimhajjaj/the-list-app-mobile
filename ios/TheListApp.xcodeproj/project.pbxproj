@@ -14,7 +14,7 @@
 		96905EF65AED1B983A6B3ABC /* libPods-TheListApp.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 58EEBF8E8E6FB1BC6CAF49B5 /* libPods-TheListApp.a */; };
 		B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
-		0A7D86FEA1084F5C96FDB1E0 /* noop-file.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61220B70835945D1BDFECCA4 /* noop-file.swift */; };
+		1E3AE11DCD74482AB0D93DB3 /* noop-file.swift in Sources */ = {isa = PBXBuildFile; fileRef = 134F6D30F3484480BE8AB791 /* noop-file.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -31,8 +31,8 @@
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		FAC715A2D49A985799AEE119 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-TheListApp/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
-		61220B70835945D1BDFECCA4 /* noop-file.swift */ = {isa = PBXFileReference; name = "noop-file.swift"; path = "TheListApp/noop-file.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
-		C6B8C2665CC048959B1A2FBC /* TheListApp-Bridging-Header.h */ = {isa = PBXFileReference; name = "TheListApp-Bridging-Header.h"; path = "TheListApp/TheListApp-Bridging-Header.h"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; explicitFileType = undefined; includeInIndex = 0; };
+		134F6D30F3484480BE8AB791 /* noop-file.swift */ = {isa = PBXFileReference; name = "noop-file.swift"; path = "TheListApp/noop-file.swift"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.swift; explicitFileType = undefined; includeInIndex = 0; };
+		D988503883704094A558FD38 /* TheListApp-Bridging-Header.h */ = {isa = PBXFileReference; name = "TheListApp-Bridging-Header.h"; path = "TheListApp/TheListApp-Bridging-Header.h"; sourceTree = "<group>"; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; explicitFileType = undefined; includeInIndex = 0; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -57,8 +57,8 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				13B07FB71A68108700A75B9A /* main.m */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				61220B70835945D1BDFECCA4 /* noop-file.swift */,
-				C6B8C2665CC048959B1A2FBC /* TheListApp-Bridging-Header.h */,
+				134F6D30F3484480BE8AB791 /* noop-file.swift */,
+				D988503883704094A558FD38 /* TheListApp-Bridging-Header.h */,
 			);
 			name = TheListApp;
 			sourceTree = "<group>";
@@ -198,7 +198,7 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				9931DE7F47E049E9B9E75055 /* TheListApp-Bridging-Header.h in Resources */,
+				9E4BC48B74814387AE45798D /* TheListApp-Bridging-Header.h in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -274,7 +274,7 @@
 				13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */,
 				13B07FC11A68108700A75B9A /* main.m in Sources */,
 				B18059E884C0ABDD17F3DC3D /* ExpoModulesProvider.swift in Sources */,
-				0A7D86FEA1084F5C96FDB1E0 /* noop-file.swift in Sources */,
+				1E3AE11DCD74482AB0D93DB3 /* noop-file.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

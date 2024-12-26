@@ -8,14 +8,15 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
+  StyleSheet,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AuthStackParamList } from '../../navigation/types';
 import { useAppDispatch, useAppSelector } from '../../hooks/redux';
 import { loginUser, clearError } from '../../store/slices/authSlice';
-import { colors } from '../../theme/colors';
-import { commonStyles } from '../../theme/commonStyles';
-import { spacing } from '../../theme/spacing';
+import { theme } from '../../constants/theme';
+import { useThemeColors } from '../../constants/theme';
 
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
@@ -24,6 +25,7 @@ export default function LoginScreen({ navigation }: Props) {
   const [password, setPassword] = useState('');
   const dispatch = useAppDispatch();
   const { loading, error } = useAppSelector((state) => state.auth);
+  const colors = useThemeColors();
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -39,58 +41,168 @@ export default function LoginScreen({ navigation }: Props) {
 
   return (
     <KeyboardAvoidingView
-      style={commonStyles.container}
+      style={[styles.container, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
-        contentContainerStyle={commonStyles.contentContainer}
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={commonStyles.title}>Welcome Back</Text>
-        
-        {error && <Text style={commonStyles.error}>{error}</Text>}
+        <View style={styles.logoContainer}>
+          <Image
+            source={require('../../assets/app-logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        </View>
 
-        <TextInput
-          style={commonStyles.input}
-          placeholder="Email"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          autoCorrect={false}
-        />
-
-        <TextInput
-          style={commonStyles.input}
-          placeholder="Password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry
-          autoCapitalize="none"
-        />
-
-        <TouchableOpacity
-          style={[
-            commonStyles.button,
-            { opacity: loading ? 0.7 : 1 }
-          ]}
-          onPress={handleLogin}
-          disabled={loading}
-        >
-          {loading ? (
-            <ActivityIndicator color={colors.surface} />
-          ) : (
-            <Text style={commonStyles.buttonText}>Login</Text>
+        <View style={styles.formContainer}>
+          <Text style={[styles.title, { color: colors.foreground }]}>Welcome Back</Text>
+          
+          {error && (
+            <View style={[styles.errorContainer, { backgroundColor: colors.destructive + '15' }]}>
+              <Text style={[styles.errorText, { color: colors.secondary }]}>{error}</Text>
+            </View>
           )}
-        </TouchableOpacity>
 
-        <View style={{ marginTop: spacing.m, alignItems: 'center' }}>
-          <Text>Don't have an account?</Text>
-          <TouchableOpacity onPress={navigateToRegister}>
-            <Text style={commonStyles.link}>Register here</Text>
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.background,
+                borderColor: colors.border,
+                color: colors.foreground,
+              },
+            ]}
+            placeholder="Email"
+            placeholderTextColor={colors.mutedForeground}
+            value={email}
+            onChangeText={setEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            autoCorrect={false}
+          />
+
+          <TextInput
+            style={[
+              styles.input,
+              {
+                backgroundColor: colors.background,
+                borderColor: colors.border,
+                color: colors.foreground,
+              },
+            ]}
+            placeholder="Password"
+            placeholderTextColor={colors.mutedForeground}
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoCapitalize="none"
+          />
+
+          <TouchableOpacity
+            style={[
+              styles.loginButton,
+              {
+                backgroundColor: colors.primary,
+                opacity: loading ? 0.7 : 1,
+              },
+            ]}
+            onPress={handleLogin}
+            disabled={loading}
+          >
+            {loading ? (
+              <ActivityIndicator color={colors.primaryForeground} />
+            ) : (
+              <Text style={[styles.loginButtonText, { color: colors.primaryForeground }]}>
+                Login
+              </Text>
+            )}
           </TouchableOpacity>
+
+          <View style={styles.registerContainer}>
+            <Text style={[styles.registerText, { color: colors.mutedForeground }]}>
+              Don't have an account?
+            </Text>
+            <TouchableOpacity onPress={navigateToRegister}>
+              <Text style={[styles.registerLink, { color: colors.primary }]}>
+                Register here
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
-} 
+}
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: theme.spacing.xl,
+  },
+  logo: {
+    width: 120,
+    height: 120,
+  },
+  formContainer: {
+    width: '100%',
+    maxWidth: 400,
+    alignSelf: 'center',
+    paddingHorizontal: theme.spacing.l,
+  },
+  title: {
+    fontSize: theme.typography.fontSize.h1,
+    fontWeight: theme.typography.fontWeight.bold,
+    marginBottom: theme.spacing.l,
+    textAlign: 'center',
+  },
+  errorContainer: {
+    padding: theme.spacing.m,
+    borderRadius: theme.borderRadius.m,
+    marginBottom: theme.spacing.m,
+  },
+  errorText: {
+    fontSize: theme.typography.fontSize.body,
+    textAlign: 'center',
+  },
+  input: {
+    height: 48,
+    borderWidth: 1,
+    borderRadius: theme.borderRadius.m,
+    paddingHorizontal: theme.spacing.m,
+    marginBottom: theme.spacing.m,
+    fontSize: theme.typography.fontSize.body,
+  },
+  loginButton: {
+    height: theme.buttons.sizes.large.height,
+    borderRadius: theme.borderRadius.m,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: theme.spacing.m,
+  },
+  loginButtonText: {
+    fontSize: theme.typography.fontSize.button,
+    fontWeight: theme.typography.fontWeight.bold,
+  },
+  registerContainer: {
+    marginTop: theme.spacing.xl,
+    alignItems: 'center',
+    gap: theme.spacing.s,
+  },
+  registerText: {
+    fontSize: theme.typography.fontSize.body,
+  },
+  registerLink: {
+    fontSize: theme.typography.fontSize.body,
+    fontWeight: theme.typography.fontWeight.medium,
+    textDecorationLine: 'underline',
+  },
+}); 
