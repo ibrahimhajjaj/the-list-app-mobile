@@ -1,13 +1,7 @@
-import axios from 'axios';
 import { API_CONFIG } from '../config/api';
 import { storage } from './storage';
-import type { AuthResponse, LoginCredentials, RegisterCredentials } from '../types/auth';
-
-// Create a separate axios instance for auth operations only
-const authApi = axios.create({
-  baseURL: API_CONFIG.BASE_URL,
-  headers: API_CONFIG.HEADERS,
-});
+import { authApi } from './api';
+import type { AuthResponse } from '../types/auth';
 
 export const authService = {
   async getStoredToken(): Promise<string | null> {
@@ -37,7 +31,11 @@ export const authService = {
       await this.setToken(data.token);
       return data;
     } catch (error: any) {
-      console.error('[Auth Service] Registration error:', error.response?.data || error.message);
+      console.error('[Auth Service] Registration error:', {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
+      });
       throw error;
     }
   },
@@ -46,16 +44,18 @@ export const authService = {
     await this.setToken(null);
   },
 
-  async validateSession() {
+  async validateSession(): Promise<{ user: any; token: string }> {
     try {
       const token = await this.getStoredToken();
       if (!token) {
         throw new Error('No token found');
       }
-      
+
       const response = await authApi.get<AuthResponse>(API_CONFIG.ENDPOINTS.AUTH.PROFILE);
       return { user: response.data.user, token };
     } catch (error: any) {
+      console.error('[Auth Service] Session validation error:', error.response?.data || error.message);
+      await this.setToken(null); // Clear token if validation fails
       throw error;
     }
   }

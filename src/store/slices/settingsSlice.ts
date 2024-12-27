@@ -1,16 +1,9 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { storage } from '../../services/storage';
+import { Settings } from '../../types/settings';
 
-export interface SettingsState {
-  notificationsEnabled: boolean;
-  titleChangeNotifications: boolean;
-  itemAddNotifications: boolean;
-  itemDeleteNotifications: boolean;
-  itemEditNotifications: boolean;
-  itemCompleteNotifications: boolean;
-}
-
-const initialState: SettingsState = {
+const initialState: Settings = {
+  theme: 'light',
   notificationsEnabled: true,
   titleChangeNotifications: true,
   itemAddNotifications: true,
@@ -32,10 +25,11 @@ export const loadSettings = async () => {
 };
 
 // Save settings using storage service
-export const saveSettings = async (state: SettingsState) => {
+export const saveSettings = async (state: Settings) => {
   try {
     // Create a plain object copy of the state
-    const settings: SettingsState = {
+    const settings: Settings = {
+      theme: state.theme,
       notificationsEnabled: state.notificationsEnabled,
       titleChangeNotifications: state.titleChangeNotifications,
       itemAddNotifications: state.itemAddNotifications,
@@ -51,7 +45,7 @@ export const saveSettings = async (state: SettingsState) => {
 
 // Check if a notification should be shown based on its type and current settings
 export const shouldShowNotification = (
-  settings: SettingsState,
+  settings: Settings,
   type: 'title_change' | 'item_add' | 'item_delete' | 'item_edit' | 'item_complete'
 ): boolean => {
   console.log('[Settings] Checking notification settings:', { type, settings });
@@ -97,7 +91,8 @@ const settingsSlice = createSlice({
         state.itemCompleteNotifications = true;
       }
       // Create a plain object copy for saving
-      const settings = {
+      const settings: Settings = {
+        theme: state.theme,
         notificationsEnabled: state.notificationsEnabled,
         titleChangeNotifications: state.titleChangeNotifications,
         itemAddNotifications: state.itemAddNotifications,
@@ -110,35 +105,75 @@ const settingsSlice = createSlice({
     },
     toggleTitleChangeNotifications: (state) => {
       state.titleChangeNotifications = !state.titleChangeNotifications;
-      const settings = { ...state };
+      const settings: Settings = {
+        theme: state.theme,
+        notificationsEnabled: state.notificationsEnabled,
+        titleChangeNotifications: state.titleChangeNotifications,
+        itemAddNotifications: state.itemAddNotifications,
+        itemDeleteNotifications: state.itemDeleteNotifications,
+        itemEditNotifications: state.itemEditNotifications,
+        itemCompleteNotifications: state.itemCompleteNotifications,
+      };
       saveSettings(settings);
       console.log('[Settings] Title change notifications toggled:', state.titleChangeNotifications);
     },
     toggleItemAddNotifications: (state) => {
       state.itemAddNotifications = !state.itemAddNotifications;
-      const settings = { ...state };
+      const settings: Settings = {
+        theme: state.theme,
+        notificationsEnabled: state.notificationsEnabled,
+        titleChangeNotifications: state.titleChangeNotifications,
+        itemAddNotifications: state.itemAddNotifications,
+        itemDeleteNotifications: state.itemDeleteNotifications,
+        itemEditNotifications: state.itemEditNotifications,
+        itemCompleteNotifications: state.itemCompleteNotifications,
+      };
       saveSettings(settings);
       console.log('[Settings] Item add notifications toggled:', state.itemAddNotifications);
     },
     toggleItemDeleteNotifications: (state) => {
       state.itemDeleteNotifications = !state.itemDeleteNotifications;
-      const settings = { ...state };
+      const settings: Settings = {
+        theme: state.theme,
+        notificationsEnabled: state.notificationsEnabled,
+        titleChangeNotifications: state.titleChangeNotifications,
+        itemAddNotifications: state.itemAddNotifications,
+        itemDeleteNotifications: state.itemDeleteNotifications,
+        itemEditNotifications: state.itemEditNotifications,
+        itemCompleteNotifications: state.itemCompleteNotifications,
+      };
       saveSettings(settings);
       console.log('[Settings] Item delete notifications toggled:', state.itemDeleteNotifications);
     },
     toggleItemEditNotifications: (state) => {
       state.itemEditNotifications = !state.itemEditNotifications;
-      const settings = { ...state };
+      const settings: Settings = {
+        theme: state.theme,
+        notificationsEnabled: state.notificationsEnabled,
+        titleChangeNotifications: state.titleChangeNotifications,
+        itemAddNotifications: state.itemAddNotifications,
+        itemDeleteNotifications: state.itemDeleteNotifications,
+        itemEditNotifications: state.itemEditNotifications,
+        itemCompleteNotifications: state.itemCompleteNotifications,
+      };
       saveSettings(settings);
       console.log('[Settings] Item edit notifications toggled:', state.itemEditNotifications);
     },
     toggleItemCompleteNotifications: (state) => {
       state.itemCompleteNotifications = !state.itemCompleteNotifications;
-      const settings = { ...state };
+      const settings: Settings = {
+        theme: state.theme,
+        notificationsEnabled: state.notificationsEnabled,
+        titleChangeNotifications: state.titleChangeNotifications,
+        itemAddNotifications: state.itemAddNotifications,
+        itemDeleteNotifications: state.itemDeleteNotifications,
+        itemEditNotifications: state.itemEditNotifications,
+        itemCompleteNotifications: state.itemCompleteNotifications,
+      };
       saveSettings(settings);
       console.log('[Settings] Item complete notifications toggled:', state.itemCompleteNotifications);
     },
-    setSettings: (state, action: PayloadAction<SettingsState>) => {
+    setSettings: (state, action: PayloadAction<Settings>) => {
       return { ...action.payload };
     },
   },

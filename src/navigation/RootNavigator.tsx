@@ -1,22 +1,42 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useAppDispatch, useAppSelector } from '../hooks/redux';
 import { loadUser } from '../store/slices/authSlice';
 import AuthNavigator from './AuthNavigator';
 import MainNavigator from './MainNavigator';
 import { RootStackParamList } from './types';
+import { SplashScreen } from '../screens/SplashScreen';
+import { storage } from '../services/storage';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export function RootNavigator() {
   const dispatch = useAppDispatch();
-  const { token, loading } = useAppSelector((state) => state.auth);
+  const { token, loading, user } = useAppSelector((state) => state.auth);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   useEffect(() => {
-    if (token && !loading) {
-      dispatch(loadUser());
+    async function initializeAuth() {
+      try {
+        const storedToken = await storage.getAuthToken();
+        if (storedToken && !user) {
+          console.log('[RootNavigator] Stored token found, validating session');
+          await dispatch(loadUser()).unwrap();
+        }
+      } catch (error) {
+        console.error('[RootNavigator] Error initializing auth:', error);
+      } finally {
+        setIsInitializing(false);
+      }
     }
-  }, [token, dispatch]);
+
+    initializeAuth();
+  }, [dispatch, user]);
+
+  // Show splash screen while loading or initializing
+  if (loading || isInitializing) {
+    return <SplashScreen />;
+  }
 
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -29,7 +49,13 @@ export function RootNavigator() {
           }}
         />
       ) : (
-        <Stack.Screen name="Main" component={MainNavigator} />
+        <Stack.Screen 
+          name="Main" 
+          component={MainNavigator}
+          options={{
+            animationTypeForReplace: 'push',
+          }}
+        />
       )}
     </Stack.Navigator>
   );

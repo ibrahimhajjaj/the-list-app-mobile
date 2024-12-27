@@ -47,7 +47,8 @@ export default {
     'expo-secure-store',
     'expo-splash-screen',
     'expo-notifications',
-    'expo-system-ui'
+    'expo-system-ui',
+    'expo-sqlite'
   ],
   newArchEnabled: true
 };

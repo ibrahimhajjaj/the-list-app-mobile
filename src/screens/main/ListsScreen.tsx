@@ -1,15 +1,13 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Text, TextInput, ScrollView, Image, Alert } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Text, TextInput, ScrollView, StatusBar } from 'react-native';
 import { useAppSelector, useAppDispatch } from '../../hooks/redux';
-import { ListItem } from '../../components/ListItem';
 import { ShareListModal } from '../../components/ShareListModal';
-import { BellOff, Sun, User, ChevronUp, ChevronDown, ChevronsUpDown, Pencil, Share2, Trash2, Save, X } from 'lucide-react-native';
+import { Pencil, Share2, Trash2, Save, X } from 'lucide-react-native';
 import { theme } from '../../constants/theme';
 import { useThemeColors } from '../../constants/theme';
-import { ListStackScreenProps } from '../../navigation/types';
-import { fetchLists, createList, updateListItem, deleteListItem, updateList, deleteList, shareList } from '../../store/actions/listActions';
-import { List } from '../../store/slices/listSlice';
+import { useTheme } from '../../contexts/ThemeContext';
+import { fetchLists, createList, updateList, deleteList } from '../../store/actions/listActions';
+import type { List } from '../../types/list';
 import { DraggableList } from '../../components/DraggableList';
 import { AppHeader } from '../../components/AppHeader';
 import { ConfirmationModal } from '../../components/ConfirmationModal';
@@ -20,6 +18,7 @@ import { storage } from '../../services/storage';
 export default function ListsScreen() {
   const dispatch = useAppDispatch();
   const { lists, loading: listsLoading } = useAppSelector((state) => state.lists);
+  const { isDark } = useTheme();
   const [newListName, setNewListName] = useState('');
   const [selectedList, setSelectedList] = useState<string | null>(null);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -64,7 +63,6 @@ export default function ListsScreen() {
   }, [selectedList]);
 
   useEffect(() => {
-    console.log('[ListsScreen] Initial lists fetch');
     dispatch(fetchLists());
 
     // Load the previously selected list from storage
@@ -148,7 +146,7 @@ export default function ListsScreen() {
     }
   };
 
-  const selectedListData = lists?.find(list => list._id === selectedList);
+  const selectedListData = lists?.find((list: List) => list._id === selectedList);
 
   const getCompletedCount = (list: List) => {
     return list.items.filter(item => item.completed).length;
@@ -189,7 +187,7 @@ export default function ListsScreen() {
     if (listToDelete) {
       try {
         // Find the next list before deletion
-        const nextList = lists.find(list => list._id !== listToDelete);
+        const nextList = lists.find((list: List) => list._id !== listToDelete);
         if (nextList) {
           // Update selected list before deletion
           setSelectedList(nextList._id);
@@ -240,6 +238,11 @@ export default function ListsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <StatusBar 
+        barStyle={isDark ? 'light-content' : 'dark-content'}
+        backgroundColor={colors.background}
+        translucent
+      />
       <AppHeader />
       <ScrollView 
         style={styles.scrollView}
