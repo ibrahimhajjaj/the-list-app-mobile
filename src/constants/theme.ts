@@ -1,6 +1,13 @@
 import { StyleSheet } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 
+export const fonts = {
+  regular: 'Poppins-Regular',
+  medium: 'Poppins-Medium',
+  semiBold: 'Poppins-SemiBold',
+  bold: 'Poppins-Bold',
+};
+
 const lightColors = {
   background: 'hsl(0, 0%, 100%)',          // White
   foreground: 'hsl(222.2, 84%, 4.9%)',     // Near Black
@@ -51,6 +58,7 @@ export const theme = {
     dark: darkColors,
   },
   typography: {
+    fonts,
     fontSize: {
       h1: 32,
       h2: 24,
@@ -173,6 +181,7 @@ export const commonStyles = StyleSheet.create({
     borderRadius: theme.borderRadius.m,
     paddingHorizontal: theme.spacing.m,
     marginBottom: theme.spacing.m,
+    fontFamily: fonts.regular,
   },
   button: {
     height: 48,
@@ -183,16 +192,19 @@ export const commonStyles = StyleSheet.create({
   buttonText: {
     fontSize: 16,
     fontWeight: '600',
+    fontFamily: fonts.semiBold,
   },
   title: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontFamily: fonts.bold,
     marginBottom: theme.spacing.m,
   },
   error: {
     marginBottom: theme.spacing.m,
+    fontFamily: fonts.medium,
   },
   link: {
     textDecorationLine: 'underline',
+    fontFamily: fonts.medium,
   },
 }); 

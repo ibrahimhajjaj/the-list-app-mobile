@@ -4,7 +4,7 @@ export default {
   version: '1.0.0',
   orientation: 'portrait',
   icon: './assets/icon.png',
-  userInterfaceStyle: 'light',
+  userInterfaceStyle: 'automatic',
   splash: {
     image: './assets/splash.png',
     resizeMode: 'contain',
@@ -48,7 +48,18 @@ export default {
     'expo-splash-screen',
     'expo-notifications',
     'expo-system-ui',
-    'expo-sqlite'
+    'expo-sqlite',
+    [
+      'expo-font',
+      {
+        fonts: [
+          './assets/fonts/Poppins/Poppins-Regular.ttf',
+          './assets/fonts/Poppins/Poppins-Medium.ttf',
+          './assets/fonts/Poppins/Poppins-SemiBold.ttf',
+          './assets/fonts/Poppins/Poppins-Bold.ttf'
+        ]
+      }
+    ]
   ],
   newArchEnabled: true
 };

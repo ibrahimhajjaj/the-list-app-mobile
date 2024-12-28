@@ -1,95 +1,57 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, StyleSheet } from 'react-native';
-import { theme } from '../constants/theme';
+import { View, StyleSheet, Image } from 'react-native';
 import { useThemeColors } from '../constants/theme';
 import * as ExpoSplashScreen from 'expo-splash-screen';
-import { useNavigation } from '@react-navigation/native';
-import type { AuthStackScreenProps } from '../navigation/types';
-import { useAppDispatch, useAppSelector } from '../hooks/redux';
-import { loadUser } from '../store/slices/authSlice';
-import { checkPermissions } from '../utils/permissions';
-import { storage } from '../services/storage';
+import { useFonts } from 'expo-font';
+
+const SPLASH_MIN_TIME = 1500; // 1.5 seconds
 
 // Keep the splash screen visible while we fetch resources
-ExpoSplashScreen.preventAutoHideAsync().catch(() => {
-  /* reloading the app might trigger some race conditions, ignore them */
+ExpoSplashScreen.preventAutoHideAsync().catch((error: any) => {
+	console.warn('[Splash] Error preventing auto hide:', error?.message || 'Unknown error');
 });
 
-export function SplashScreen() {
+export function SplashScreen({ onReady }: { onReady: () => void }) {
   const colors = useThemeColors();
-  const navigation = useNavigation<AuthStackScreenProps<'Splash'>['navigation']>();
-  const dispatch = useAppDispatch();
-  const { loading } = useAppSelector((state) => state.auth);
-  const [appIsReady, setAppIsReady] = useState(false);
+  const [isMinTimeElapsed, setIsMinTimeElapsed] = useState(false);
+  const [hasLayout, setHasLayout] = useState(false);
+
+  const [fontsLoaded, fontError] = useFonts({
+    'Poppins-Regular': require('../../assets/fonts/Poppins/Poppins-Regular.ttf'),
+    'Poppins-Medium': require('../../assets/fonts/Poppins/Poppins-Medium.ttf'),
+    'Poppins-SemiBold': require('../../assets/fonts/Poppins/Poppins-SemiBold.ttf'),
+    'Poppins-Bold': require('../../assets/fonts/Poppins/Poppins-Bold.ttf'),
+  });
 
   useEffect(() => {
-    async function prepare() {
-      try {
-        console.log('[Splash] Starting app initialization');
-        
-        // Check permissions first
-        const permissionsStatus = await checkPermissions();
-        const needsPermissions = !permissionsStatus.notifications || !permissionsStatus.batteryOptimization;
-        
-        if (needsPermissions) {
-          console.log('[Splash] Permissions needed, redirecting to permissions screen');
-          setAppIsReady(true);
-          return;
-        }
+    const timer = setTimeout(() => {
+      setIsMinTimeElapsed(true);
+    }, SPLASH_MIN_TIME);
 
-        // Get stored token from SQLite
-        const storedToken = await storage.getAuthToken();
-        console.log('[Splash] Stored token status:', storedToken ? 'found' : 'not found');
+    return () => clearTimeout(timer);
+  }, []);
 
-        // Try to load the user session if we have a token
-        if (storedToken) {
-          console.log('[Splash] Token found, validating session');
-          await dispatch(loadUser()).unwrap();
-          console.log('[Splash] Session validated successfully');
-        } else {
-          console.log('[Splash] No token found, proceeding to login');
+  // Check conditions and proceed when ready
+  useEffect(() => {
+    const canProceed = (fontsLoaded || fontError) && isMinTimeElapsed && hasLayout;
+
+    if (canProceed) {
+      (async () => {
+        try {
+          await ExpoSplashScreen.hideAsync();
+          onReady();
+        } catch (error: any) {
+			console.warn('[Splash] Error hiding splash screen:', error?.message || 'Unknown error');
         }
-      } catch (error) {
-        console.error('[Splash] Error during initialization:', error);
-        // If loading user fails, we'll handle it in the auth flow
-      } finally {
-        // Add a small delay to ensure smooth transition
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        setAppIsReady(true);
-      }
+      })();
     }
+  }, [fontsLoaded, fontError, isMinTimeElapsed, hasLayout, onReady]);
 
-    prepare();
-  }, [dispatch]);
+  const onLayoutRootView = useCallback(() => {
+    setHasLayout(true);
+  }, []);
 
-  const onLayoutRootView = useCallback(async () => {
-    if (appIsReady) {
-      try {
-        await ExpoSplashScreen.hideAsync();
-        
-        // Check permissions again in case they changed while splash was showing
-        const permissionsStatus = await checkPermissions();
-        const needsPermissions = !permissionsStatus.notifications || !permissionsStatus.batteryOptimization;
-        
-        // Get current token state
-        const storedToken = await storage.getAuthToken();
-        
-        if (needsPermissions) {
-          navigation.replace('Permissions');
-        } else if (!storedToken || loading) {
-          navigation.replace('Login');
-        } else {
-          // Let RootNavigator handle the navigation since we have a valid token
-          navigation.replace('Login');
-        }
-      } catch (error) {
-        console.error('[Splash] Error during navigation:', error);
-        navigation.replace('Login');
-      }
-    }
-  }, [appIsReady, navigation, loading]);
-
-  if (!appIsReady) {
+  if (!fontsLoaded && !fontError) {
     return null;
   }
 
@@ -97,12 +59,24 @@ export function SplashScreen() {
     <View 
       style={[styles.container, { backgroundColor: colors.background }]}
       onLayout={onLayoutRootView}
-    />
+    >
+      <Image
+        source={require('../../assets/splash.png')}
+        style={styles.logo}
+        resizeMode="contain"
+      />
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  logo: {
+    width: '60%',
+    height: '60%',
   },
 }); 

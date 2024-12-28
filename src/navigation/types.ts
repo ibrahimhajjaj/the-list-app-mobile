@@ -2,7 +2,9 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 
 export type RootStackParamList = {
-  Auth: undefined;
+  Auth: {
+    needsPermissions?: boolean;
+  };
   Main: undefined;
 };
 
