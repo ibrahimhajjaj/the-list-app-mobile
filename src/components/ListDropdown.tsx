@@ -1,8 +1,8 @@
 import React from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, Modal } from 'react-native';
 import { theme } from '../constants/theme';
 import { useThemeColors } from '../constants/theme';
-import { List } from '../store/slices/listSlice';
+import type { List, SharedUser } from '../types/list';
 import { ChevronsUpDown, Check } from 'lucide-react-native';
 import { useAppSelector } from '../hooks/redux';
 
@@ -40,7 +40,7 @@ export function ListDropdown({
     return filteredLists.reduce((acc, list) => {
       if (list.owner._id === user?._id) {
         acc.ownedLists.push(list);
-      } else if (list.sharedWith.some(share => share.user === user?._id)) {
+      } else if (list.sharedWith.some((share: SharedUser) => share.user === user?._id)) {
         acc.sharedLists.push(list);
       }
       return acc;
@@ -70,130 +70,150 @@ export function ListDropdown({
         </TouchableOpacity>
       </View>
 
-      {isDropdownOpen && (
-        <View style={[
-          styles.dropdownContainer,
-          {
-            backgroundColor: colors.background,
-            borderColor: colors.border
-          }
-        ]}>
-          <View style={[
-            styles.searchContainer,
-            { borderBottomColor: colors.border }
-          ]}>
-            <TextInput
-              style={[
-                styles.searchInput,
-                {
-                  backgroundColor: colors.accent,
-                  color: colors.foreground
-                }
-              ]}
-              placeholder="Search list..."
-              placeholderTextColor={colors.mutedForeground}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
+      <Modal
+        visible={isDropdownOpen}
+        transparent
+        onRequestClose={onDropdownToggle}
+      >
+        <TouchableOpacity 
+          style={[styles.overlay, { backgroundColor: 'transparent' }]} 
+          activeOpacity={1} 
+          onPress={onDropdownToggle}
+        >
+          <TouchableOpacity 
+            activeOpacity={1} 
+            onPress={(e) => e.stopPropagation()}
+            style={[
+              styles.dropdownContainer,
+			  {
+				backgroundColor:colors.background,
+				borderColor: colors.border
+			  },
+            ]}
+          >
+            <View style={[
+              styles.searchContainer,
+              { borderBottomColor: colors.border }
+            ]}>
+              <TextInput
+                style={[
+                  styles.searchInput,
+                  {
+                    backgroundColor: colors.accent,
+                    color: colors.foreground
+                  }
+                ]}
+                placeholder="Search list..."
+                placeholderTextColor={colors.mutedForeground}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoCapitalize="none"
+                autoCorrect={false}
+              />
+            </View>
 
-          {/* Owned Lists Section */}
-          {ownedLists.length > 0 && (
-            <View style={styles.listSection}>
-              <Text style={[
-                styles.listSectionTitle,
-                {
-                  color: colors.mutedForeground,
-                  backgroundColor: colors.background
-                }
-              ]}>
-                Owned
-              </Text>
-              {ownedLists.map((list) => (
-                <TouchableOpacity
-                  key={list._id}
-                  style={[
-                    styles.listItem,
-                    selectedList === list._id && {
-                      backgroundColor: colors.accent
-                    }
-                  ]}
-                  onPress={() => onListPress(list._id)}
-                >
-                  <View style={styles.listItemContent}>
-                    <Text style={[
-                      styles.listItemText,
-                      { color: colors.foreground },
+            {/* Owned Lists Section */}
+            {ownedLists.length > 0 && (
+              <View style={styles.listSection}>
+                <Text style={[
+                  styles.listSectionTitle,
+                  {
+                    color: colors.mutedForeground,
+                    backgroundColor: colors.background
+                  }
+                ]}>
+                  Owned
+                </Text>
+                {ownedLists.map((list: List) => (
+                  <TouchableOpacity
+                    key={list._id}
+                    style={[
+                      styles.listItem,
                       selectedList === list._id && {
-                        color: colors.primary,
-                        fontWeight: '600'
+                        backgroundColor: colors.accent
                       }
-                    ]}>
-                      {list.title}
-                    </Text>
-                    {selectedList === list._id && (
-                      <Check size={16} color={colors.primary} />
-                    )}
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
+                    ]}
+                    onPress={() => {
+                      onListPress(list._id);
+                      onDropdownToggle();
+                    }}
+                  >
+                    <View style={styles.listItemContent}>
+                      <Text style={[
+                        styles.listItemText,
+                        { color: colors.foreground },
+                        selectedList === list._id && {
+                          color: colors.primary,
+                          fontWeight: '600'
+                        }
+                      ]}>
+                        {list.title}
+                      </Text>
+                      {selectedList === list._id && (
+                        <Check size={16} color={colors.primary} />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
 
-          {/* Shared Lists Section */}
-          {sharedLists.length > 0 && (
-            <View style={styles.listSection}>
-              <Text style={[
-                styles.listSectionTitle,
-                {
-                  color: colors.mutedForeground,
-                  backgroundColor: colors.background
-                }
-              ]}>
-                Shared with me
-              </Text>
-              {sharedLists.map((list) => (
-                <TouchableOpacity
-                  key={list._id}
-                  style={[
-                    styles.listItem,
-                    selectedList === list._id && {
-                      backgroundColor: colors.accent
-                    }
-                  ]}
-                  onPress={() => onListPress(list._id)}
-                >
-                  <View style={styles.listItemContent}>
-                    <Text style={[
-                      styles.listItemText,
-                      { color: colors.foreground },
+            {/* Shared Lists Section */}
+            {sharedLists.length > 0 && (
+              <View style={styles.listSection}>
+                <Text style={[
+                  styles.listSectionTitle,
+                  {
+                    color: colors.mutedForeground,
+                    backgroundColor: colors.background
+                  }
+                ]}>
+                  Shared with me
+                </Text>
+                {sharedLists.map((list: List) => (
+                  <TouchableOpacity
+                    key={list._id}
+                    style={[
+                      styles.listItem,
                       selectedList === list._id && {
-                        color: colors.primary,
-                        fontWeight: '600'
+                        backgroundColor: colors.accent
                       }
-                    ]}>
-                      {list.title}
-                    </Text>
-                    {selectedList === list._id && (
-                      <Check size={16} color={colors.primary} />
-                    )}
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
+                    ]}
+                    onPress={() => {
+                      onListPress(list._id);
+                      onDropdownToggle();
+                    }}
+                  >
+                    <View style={styles.listItemContent}>
+                      <Text style={[
+                        styles.listItemText,
+                        { color: colors.foreground },
+                        selectedList === list._id && {
+                          color: colors.primary,
+                          fontWeight: '600'
+                        }
+                      ]}>
+                        {list.title}
+                      </Text>
+                      {selectedList === list._id && (
+                        <Check size={16} color={colors.primary} />
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
 
-          {searchQuery && filteredLists.length === 0 && (
-            <View style={styles.noResults}>
-              <Text style={[styles.noResultsText, { color: colors.mutedForeground }]}>
-                No lists found
-              </Text>
-            </View>
-          )}
-        </View>
-      )}
+            {searchQuery && filteredLists.length === 0 && (
+              <View style={styles.noResults}>
+                <Text style={[styles.noResultsText, { color: colors.mutedForeground }]}>
+                  No lists found
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </View>
   );
 }
@@ -227,11 +247,15 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
   },
+  overlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
   dropdownContainer: {
     position: 'absolute',
-    top: '85%',
-    right: 0,
-    left: '40%',
+	top: 130,
+	right: 16,
+	left: '41%',
     borderRadius: theme.borderRadius.m,
     borderWidth: 1,
     zIndex: 1000,
