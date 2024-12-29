@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { WS_URL } from '../config';
 import * as Notifications from 'expo-notifications';
-import { store } from '../store/store';
+import { store } from '../store';
 import { authService } from './auth';
 import { updateListInStore } from '../store/actions/listActionCreators';
 import { shouldShowNotification } from '../store/slices/settingsSlice';

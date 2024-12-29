@@ -14,6 +14,14 @@ interface ListDropdownProps {
   onDropdownToggle: () => void;
 }
 
+const isOwner = (list: List, userId: string | undefined) => {
+  if (!userId) return false;
+  if (typeof list.owner === 'string') {
+    return list.owner === userId;
+  }
+  return list.owner._id === userId;
+};
+
 export function ListDropdown({ 
   lists, 
   selectedList, 
@@ -38,7 +46,7 @@ export function ListDropdown({
   // Separate lists into owned and shared
   const { ownedLists, sharedLists } = React.useMemo(() => {
     return filteredLists.reduce((acc, list) => {
-      if (list.owner._id === user?._id) {
+      if (isOwner(list, user?._id)) {
         acc.ownedLists.push(list);
       } else if (list.sharedWith.some((share: SharedUser) => share.user === user?._id)) {
         acc.sharedLists.push(list);

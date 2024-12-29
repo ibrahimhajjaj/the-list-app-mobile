@@ -64,7 +64,7 @@ export default function ListsScreen() {
     // Load the previously selected list from storage
     const loadSelectedList = async () => {
       const savedListId = await storage.getSelectedList();
-      if (savedListId && lists?.some(list => list._id === savedListId)) {
+      if (savedListId && lists?.some((list: List) => list._id === savedListId)) {
         setSelectedList(savedListId);
       } else {
         await storage.saveSelectedList(null);
@@ -122,7 +122,10 @@ export default function ListsScreen() {
         item._id === itemId ? { ...item, completed: !item.completed } : item
       );
 
-      await dispatch(updateList(selectedList, { items: updatedItems }));
+      await dispatch(updateList({
+        listId: selectedList,
+        data: { items: updatedItems }
+      })).unwrap();
       console.log('[ListsScreen] Item toggled successfully');
     } catch (error) {
       console.error('[ListsScreen] Failed to toggle item:', error);
@@ -135,7 +138,10 @@ export default function ListsScreen() {
     const updatedItems = selectedListData.items.filter(item => item._id !== itemId);
 
     try {
-      await dispatch(updateList(selectedList, { items: updatedItems }));
+      await dispatch(updateList({
+        listId: selectedList,
+        data: { items: updatedItems }
+      })).unwrap();
     } catch (error) {
       console.error('Failed to delete item:', error);
     }
@@ -149,7 +155,10 @@ export default function ListsScreen() {
     );
 
     try {
-      await dispatch(updateList(selectedList, { items: updatedItems }));
+      await dispatch(updateList({
+        listId: selectedList,
+        data: { items: updatedItems }
+      })).unwrap();
     } catch (error) {
       console.error('Failed to update item:', error);
     }
@@ -174,13 +183,19 @@ export default function ListsScreen() {
 
     try {
       // Add all items at once
-      const newItems = items.map(itemText => ({
+      const newItemsList = items.map(itemText => ({
+        _id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         text: itemText,
-        completed: false
+        completed: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
       }));
 
-      const updatedItems = [...selectedListData.items, ...newItems];
-      await dispatch(updateList(selectedList, { items: updatedItems }));
+      const updatedItems = [...selectedListData.items, ...newItemsList];
+      await dispatch(updateList({
+        listId: selectedList,
+        data: { items: updatedItems }
+      })).unwrap();
       setNewItems('');
     } catch (error) {
       console.error('Failed to add items:', error);
@@ -224,7 +239,10 @@ export default function ListsScreen() {
     // Only update if the title has changed
     if (editedTitle.trim() !== selectedListData?.title) {
       try {
-        await dispatch(updateList(selectedList, { title: editedTitle.trim() }));
+        await dispatch(updateList({ 
+          listId: selectedList,
+          data: { title: editedTitle.trim() }
+        })).unwrap();
       } catch (error) {
         console.error('Failed to update title:', error);
       }

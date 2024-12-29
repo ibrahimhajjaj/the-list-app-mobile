@@ -3,8 +3,7 @@ import { View, TextInput, FlatList, Text, TouchableOpacity, StyleSheet } from 'r
 import { debounce } from 'lodash';
 import api from '../services/api';
 import { useAppDispatch } from '../hooks/redux';
-import { setError } from '../store/slices/listSlice';
-import { theme } from '../constants/theme';
+import { setError } from '../store';
 import { useThemeColors } from '../constants/theme';
 
 interface User {

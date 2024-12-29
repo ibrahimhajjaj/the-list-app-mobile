@@ -18,6 +18,7 @@ interface AuthState {
     timestamp: number;
     details?: any;
   } | null;
+  isAuthenticated: boolean;
 }
 
 const initialState: AuthState = {
@@ -26,6 +27,7 @@ const initialState: AuthState = {
   loading: false,
   error: null,
   lastAttempt: null,
+  isAuthenticated: false
 };
 
 // Async thunks
@@ -101,6 +103,7 @@ const authSlice = createSlice({
       state.token = null;
       state.error = null;
       state.loading = false;
+      state.isAuthenticated = false;
       authService.logout();
     },
     clearError: (state) => {
@@ -119,10 +122,12 @@ const authSlice = createSlice({
         state.user = action.payload.user;
         state.token = action.payload.token;
         state.error = null;
+        state.isAuthenticated = true;
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
+        state.isAuthenticated = false;
       })
       // Register
       .addCase(registerUser.pending, (state) => {
@@ -139,6 +144,7 @@ const authSlice = createSlice({
         state.user = action.payload.user;
         state.token = action.payload.token;
         state.error = null;
+        state.isAuthenticated = true;
         state.lastAttempt = {
           action: 'register',
           timestamp: Date.now(),
@@ -149,6 +155,7 @@ const authSlice = createSlice({
         state.loading = false;
         const payload = action.payload as any;
         state.error = payload?.message || 'Registration failed';
+        state.isAuthenticated = false;
         state.lastAttempt = {
           action: 'register',
           timestamp: Date.now(),
@@ -171,6 +178,7 @@ const authSlice = createSlice({
           state.error = 'Invalid session data';
           state.user = null;
           state.token = null;
+          state.isAuthenticated = false;
           return;
         }
 
@@ -178,12 +186,14 @@ const authSlice = createSlice({
         state.user = action.payload.user;
         state.token = action.payload.token;
         state.error = null;
+        state.isAuthenticated = true;
       })
       .addCase(loadUser.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
         state.user = null;
         state.token = null;
+        state.isAuthenticated = false;
       })
       // Update User
       .addCase(updateUser.pending, (state) => {

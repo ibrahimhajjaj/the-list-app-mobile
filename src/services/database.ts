@@ -29,13 +29,35 @@ class DatabaseService {
         id TEXT PRIMARY KEY,
         data TEXT,
         last_updated INTEGER,
-        is_shared INTEGER DEFAULT 0
+        is_shared INTEGER DEFAULT 0,
+        version INTEGER DEFAULT 1,
+        server_version INTEGER DEFAULT 1
       );
 
       CREATE TABLE IF NOT EXISTS selected_list (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         list_id TEXT
       );
+
+      CREATE TABLE IF NOT EXISTS pending_changes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        data TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        retries INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'pending',
+        base_version INTEGER DEFAULT 1
+      );
+
+      -- Create indices for frequently queried columns
+      CREATE INDEX IF NOT EXISTS idx_lists_is_shared ON lists(is_shared);
+      CREATE INDEX IF NOT EXISTS idx_lists_last_updated ON lists(last_updated);
+      CREATE INDEX IF NOT EXISTS idx_lists_version ON lists(version);
+      CREATE INDEX IF NOT EXISTS idx_lists_server_version ON lists(server_version);
+      CREATE INDEX IF NOT EXISTS idx_pending_changes_status ON pending_changes(status);
+      CREATE INDEX IF NOT EXISTS idx_pending_changes_entity_id ON pending_changes(entity_id);
+      CREATE INDEX IF NOT EXISTS idx_settings_key ON settings(key);
     `);
   }
 
@@ -155,9 +177,17 @@ class DatabaseService {
   async saveLists(lists: any[], isShared: boolean = false): Promise<void> {
     await db.withTransactionAsync(async () => {
       for (const list of lists) {
+        const currentList = await db.getFirstAsync<{ version: number, server_version: number }>(
+          'SELECT version, server_version FROM lists WHERE id = ?',
+          [list.id]
+        );
+
+        const version = currentList ? currentList.version + 1 : 1;
+        const serverVersion = list.version || (currentList ? currentList.server_version : 1);
+
         await db.runAsync(
-          'INSERT OR REPLACE INTO lists (id, data, last_updated, is_shared) VALUES (?, ?, ?, ?)',
-          [list.id, JSON.stringify(list), Date.now(), isShared ? 1 : 0]
+          'INSERT OR REPLACE INTO lists (id, data, last_updated, is_shared, version, server_version) VALUES (?, ?, ?, ?, ?, ?)',
+          [list.id, JSON.stringify(list), Date.now(), isShared ? 1 : 0, version, serverVersion]
         );
       }
     });
@@ -199,6 +229,72 @@ class DatabaseService {
     return result ? result.list_id : null;
   }
 
+  // Pending changes operations
+  async addPendingChange(actionType: string, entityId: string, data: any): Promise<void> {
+    const currentList = await db.getFirstAsync<{ version: number }>(
+      'SELECT version FROM lists WHERE id = ?',
+      [entityId]
+    );
+
+    await db.runAsync(
+      'INSERT INTO pending_changes (action_type, entity_id, data, timestamp, base_version) VALUES (?, ?, ?, ?, ?)',
+      [actionType, entityId, JSON.stringify(data), Date.now(), currentList?.version || 1]
+    );
+  }
+
+  async getPendingChanges(): Promise<Array<{
+    id: number;
+    actionType: string;
+    entityId: string;
+    data: any;
+    timestamp: number;
+    retries: number;
+    status: string;
+  }>> {
+    interface PendingChangeRow {
+      id: number;
+      action_type: string;
+      entity_id: string;
+      data: string;
+      timestamp: number;
+      retries: number;
+      status: string;
+    }
+
+    const results = await db.getAllAsync<PendingChangeRow>(
+      'SELECT * FROM pending_changes WHERE status = ? ORDER BY timestamp ASC',
+      ['pending']
+    );
+
+    return results.map(row => ({
+      id: row.id,
+      actionType: row.action_type,
+      entityId: row.entity_id,
+      data: JSON.parse(row.data),
+      timestamp: row.timestamp,
+      retries: row.retries,
+      status: row.status
+    }));
+  }
+
+  async updatePendingChangeStatus(id: number, status: string, retries?: number): Promise<void> {
+    if (retries !== undefined) {
+      await db.runAsync(
+        'UPDATE pending_changes SET status = ?, retries = ? WHERE id = ?',
+        [status, retries, id]
+      );
+    } else {
+      await db.runAsync(
+        'UPDATE pending_changes SET status = ? WHERE id = ?',
+        [status, id]
+      );
+    }
+  }
+
+  async removePendingChange(id: number): Promise<void> {
+    await db.runAsync('DELETE FROM pending_changes WHERE id = ?', [id]);
+  }
+
   async clearAllData(): Promise<void> {
     await db.withTransactionAsync(async () => {
       await db.execAsync(`
@@ -206,6 +302,7 @@ class DatabaseService {
         DELETE FROM settings;
         DELETE FROM lists;
         DELETE FROM selected_list;
+        DELETE FROM pending_changes;
       `);
     });
   }

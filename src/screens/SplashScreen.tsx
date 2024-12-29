@@ -1,20 +1,10 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { View, StyleSheet, Image } from 'react-native';
+import React, { useEffect } from 'react';
+import { View, ActivityIndicator, StyleSheet } from 'react-native';
 import { useThemeColors } from '../constants/theme';
-import * as ExpoSplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
-
-const SPLASH_MIN_TIME = 1500; // 1.5 seconds
-
-// Keep the splash screen visible while we fetch resources
-ExpoSplashScreen.preventAutoHideAsync().catch((error: any) => {
-	console.warn('[Splash] Error preventing auto hide:', error?.message || 'Unknown error');
-});
 
 export function SplashScreen({ onReady }: { onReady: () => void }) {
   const colors = useThemeColors();
-  const [isMinTimeElapsed, setIsMinTimeElapsed] = useState(false);
-  const [hasLayout, setHasLayout] = useState(false);
 
   const [fontsLoaded, fontError] = useFonts({
     'Poppins-Regular': require('../../assets/fonts/Poppins/Poppins-Regular.ttf'),
@@ -24,47 +14,18 @@ export function SplashScreen({ onReady }: { onReady: () => void }) {
   });
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsMinTimeElapsed(true);
-    }, SPLASH_MIN_TIME);
-
-    return () => clearTimeout(timer);
-  }, []);
-
-  // Check conditions and proceed when ready
-  useEffect(() => {
-    const canProceed = (fontsLoaded || fontError) && isMinTimeElapsed && hasLayout;
-
-    if (canProceed) {
-      (async () => {
-        try {
-          await ExpoSplashScreen.hideAsync();
-          onReady();
-        } catch (error: any) {
-			console.warn('[Splash] Error hiding splash screen:', error?.message || 'Unknown error');
-        }
-      })();
+    if (fontsLoaded || fontError) {
+      onReady();
     }
-  }, [fontsLoaded, fontError, isMinTimeElapsed, hasLayout, onReady]);
-
-  const onLayoutRootView = useCallback(() => {
-    setHasLayout(true);
-  }, []);
+  }, [fontsLoaded, fontError, onReady]);
 
   if (!fontsLoaded && !fontError) {
     return null;
   }
 
   return (
-    <View 
-      style={[styles.container, { backgroundColor: colors.background }]}
-      onLayout={onLayoutRootView}
-    >
-      <Image
-        source={require('../../assets/splash.png')}
-        style={styles.logo}
-        resizeMode="contain"
-      />
+    <View style={[styles.container, { backgroundColor: colors.background }]}>
+      <ActivityIndicator size="large" color={colors.primary} />
     </View>
   );
 }
@@ -72,11 +33,7 @@ export function SplashScreen({ onReady }: { onReady: () => void }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
-  },
-  logo: {
-    width: '60%',
-    height: '60%',
+    alignItems: 'center',
   },
 }); 
