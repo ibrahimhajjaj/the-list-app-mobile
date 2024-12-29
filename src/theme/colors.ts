@@ -44,6 +44,8 @@ export const lightColors = {
 	input: 'hsl(214.3, 31.8%, 91.4%)',       // Very Light Gray
 	ring: 'hsl(222.2, 84%, 4.9%)',           // Near Black
 	placeholder: '#C7C7CC',
+
+	shadowColor: '#000000'
   };
   
   export const darkColors = {
@@ -59,6 +61,10 @@ export const lightColors = {
 	destructiveForeground: 'hsl(210, 40%, 98%)', // Light Blue
 	onSecondary: '#FFFFFF',
 	
+	surface: '#1C1C1E',
+	text: '#FFFFFF',
+	textLight: '#A0A0A0',
+	
 	// Accent colors
 	accent: 'hsl(217.2, 32.6%, 17.5%)',      // Dark Gray
 	accentForeground: 'hsl(210, 40%, 98%)',  // Light Blue
@@ -72,7 +78,7 @@ export const lightColors = {
 	
 	// UI elements
 	border: 'hsl(217.2, 32.6%, 25%)',        // Darker gray for better contrast in dark mode
-	ring: 'hsl(212.7, 26.8%, 83.9%)',        // Light Gray	// Secondary colors
+	ring: 'hsl(212.7, 26.8%, 83.9%)',        // Light Gray
 	disabled: '#3A3A3C',
 	divider: '#38383A',
 	
@@ -86,6 +92,8 @@ export const lightColors = {
 	input: 'hsl(217.2, 32.6%, 17.5%)',       // Dark Gray
 	inputBorder: '#38383A',
 	placeholder: '#8E8E93',
+
+	shadowColor: 'hsl(217.2, 32.6%, 100%)'
   };
   
   export type ThemeColors = typeof lightColors;

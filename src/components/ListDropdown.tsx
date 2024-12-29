@@ -249,13 +249,13 @@ const styles = StyleSheet.create({
   },
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'transparent',
   },
   dropdownContainer: {
     position: 'absolute',
-	top: 130,
-	right: 16,
-	left: '41%',
+    top: 130,
+    right: 16,
+    left: '41%',
     borderRadius: theme.borderRadius.m,
     borderWidth: 1,
     zIndex: 1000,

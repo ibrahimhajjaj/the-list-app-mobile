@@ -28,7 +28,7 @@ export function AppHeader() {
   };
 
   return (
-    <View style={[styles.header, { backgroundColor: colors.background }]}>
+    <View style={[styles.header, { backgroundColor: colors.background, shadowColor: colors.shadowColor }]}>
       <View style={styles.headerLeft}>
         <Image 
           source={require('../../assets/app-icon.png')} 
