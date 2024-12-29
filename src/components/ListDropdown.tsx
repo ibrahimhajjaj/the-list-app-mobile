@@ -15,7 +15,7 @@ interface ListDropdownProps {
 }
 
 const isOwner = (list: List, userId: string | undefined) => {
-  if (!userId) return false;
+  if (!userId || !list || !list.owner) return false;
   if (typeof list.owner === 'string') {
     return list.owner === userId;
   }
@@ -31,24 +31,39 @@ export function ListDropdown({
 }: ListDropdownProps) {
   const [searchQuery, setSearchQuery] = React.useState('');
   const { user } = useAppSelector((state) => state.auth);
-  const selectedListData = lists.find(list => list._id === selectedList);
+  
+  const selectedListData = React.useMemo(() => {
+    return (lists || []).find(list => list?._id === selectedList);
+  }, [lists, selectedList]);
+
   const colors = useThemeColors();
   
   // Filter lists based on search query
   const filteredLists = React.useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
-    if (!query) return lists;
-    return lists.filter(list => 
+    const validLists = (lists || []).filter(list => {
+      if (!list || !list.title) {
+        return false;
+      }
+      return true;
+    });
+    
+    if (!query) return validLists;
+    return validLists.filter(list => 
       list.title.toLowerCase().includes(query)
     );
   }, [lists, searchQuery]);
 
   // Separate lists into owned and shared
   const { ownedLists, sharedLists } = React.useMemo(() => {
-    return filteredLists.reduce((acc, list) => {
+    return (filteredLists || []).reduce((acc, list) => {
+      if (!list || !list._id) {
+        return acc;
+      }
+      
       if (isOwner(list, user?._id)) {
         acc.ownedLists.push(list);
-      } else if (list.sharedWith.some((share: SharedUser) => share.user === user?._id)) {
+      } else if (list.sharedWith?.some((share: SharedUser) => share.user === user?._id)) {
         acc.sharedLists.push(list);
       }
       return acc;

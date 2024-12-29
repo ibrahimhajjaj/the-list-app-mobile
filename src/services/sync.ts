@@ -13,13 +13,29 @@ interface SyncError extends Error {
   };
 }
 
+interface PendingChange {
+  id: number;
+  actionType: string;
+  entityId: string;
+  data: any;
+  timestamp: number;
+  retries: number;
+  status: string;
+  originalEntityId?: string;
+}
+
+interface IDMapping {
+  tempId: string;
+  actualId: string;
+  status: 'pending' | 'completed' | 'failed';
+}
+
 class SyncService {
   private isProcessing: boolean = false;
   private readonly MAX_RETRIES = 3;
   private readonly BATCH_SIZE = 5;
-  private readonly BASE_DELAY = 1000;
-  private readonly MAX_DELAY = 30000;
   private syncInterval: NodeJS.Timeout | null = null;
+  private idMappings: Map<string, IDMapping> = new Map();
 
   constructor() {
     // No need to set up network listener here as it's handled in RootNavigator
@@ -67,222 +83,354 @@ class SyncService {
     }
   }
 
-  private calculateBackoffDelay(retries: number): number {
-    const delay = Math.min(
-      this.BASE_DELAY * Math.pow(2, retries),
-      this.MAX_DELAY
-    );
-    // Add jitter to prevent thundering herd
-    return delay + Math.random() * 1000;
+  private sortChangesByPriority(changes: PendingChange[]): PendingChange[] {
+    const createChanges = changes.filter(c => c.actionType === 'CREATE_LIST');
+    const updateChanges = changes.filter(c => c.actionType === 'UPDATE_LIST');
+    const deleteChanges = changes.filter(c => c.actionType === 'DELETE_LIST');
+
+    console.log('[Sync Queue] Sorting changes by priority:', {
+      before: changes.map(c => ({ id: c.id, type: c.actionType })),
+      after: [...createChanges, ...updateChanges, ...deleteChanges].map(c => ({ id: c.id, type: c.actionType }))
+    });
+
+    return [...createChanges, ...updateChanges, ...deleteChanges];
   }
 
   private async processPendingChanges() {
-    if (this.isProcessing) return;
+    if (this.isProcessing) {
+      console.log('[Sync Queue] Already processing changes, skipping...');
+      return;
+    }
 
-    const state = store.getState();
-    const isConnected = state.network.isConnected && state.network.isInternetReachable;
-    
-    if (!isConnected) return;
+    const startTime = Date.now();
+    console.log('[Sync Queue] Starting sync process:', { startTime });
 
     try {
       this.isProcessing = true;
+      console.time('fetchPendingChanges');
       const pendingChanges = await databaseService.getPendingChanges();
+      console.timeEnd('fetchPendingChanges');
       
-      // Process changes in batches
-      for (let i = 0; i < pendingChanges.length; i += this.BATCH_SIZE) {
-        const batch = pendingChanges.slice(i, i + this.BATCH_SIZE);
-        await Promise.all(batch.map(change => this.processChange(change)));
+      console.log('[Sync Queue] Retrieved pending changes:', {
+        duration: Date.now() - startTime,
+        totalChanges: pendingChanges.length,
+        changes: pendingChanges.map(c => ({
+          id: c.id,
+          type: c.actionType,
+          entityId: c.entityId
+        }))
+      });
+
+      // Group changes by entity and sort by operation type
+      console.time('groupAndSortChanges');
+      const changesByEntity = this.groupChangesByEntity(pendingChanges);
+      console.timeEnd('groupAndSortChanges');
+      
+      // Process each entity's changes in sequence
+      for (const [entityId, changes] of changesByEntity) {
+        const groupStartTime = Date.now();
+        console.log('[Sync Queue] Processing entity group:', {
+          startTime: groupStartTime,
+          entityId,
+          totalChanges: changes.length,
+          changes: changes.map(c => ({
+            id: c.id,
+            type: c.actionType
+          }))
+        });
+
+        try {
+          await this.processEntityChanges(entityId, changes);
+          console.log('[Sync Queue] Completed entity group:', {
+            entityId,
+            duration: Date.now() - groupStartTime
+          });
+        } catch (error) {
+          console.error('[Sync Queue] Failed entity group:', {
+            entityId,
+            duration: Date.now() - groupStartTime,
+            error
+          });
+          await this.markDependentChangesFailed(entityId, changes);
+        }
       }
+
+      const endTime = Date.now();
+      console.log('[Sync Queue] Sync process completed:', {
+        totalDuration: endTime - startTime,
+        endTime
+      });
     } finally {
       this.isProcessing = false;
     }
   }
 
-  private async processChange(change: any) {
+  private groupChangesByEntity(changes: PendingChange[]): Map<string, PendingChange[]> {
+    const groups = new Map<string, PendingChange[]>();
+    
+    for (const change of changes) {
+      const existing = groups.get(change.entityId) || [];
+      groups.set(change.entityId, [...existing, change]);
+    }
+
+    // Sort changes within each group by operation type priority
+    for (const [entityId, entityChanges] of groups) {
+      groups.set(entityId, this.sortChangesByPriority(entityChanges));
+    }
+
+    return groups;
+  }
+
+  private async processEntityChanges(entityId: string, changes: PendingChange[]) {
+    const startTime = Date.now();
+    let operationCount = 0;
+
     try {
+      for (const change of changes) {
+        const opStartTime = Date.now();
+        operationCount++;
+
+        console.log('[Sync Queue] Starting operation:', {
+          count: operationCount,
+          totalOps: changes.length,
+          type: change.actionType,
+          startTime: opStartTime
+        });
+
+        await this.processChange(change);
+
+        console.log('[Sync Queue] Completed operation:', {
+          type: change.actionType,
+          duration: Date.now() - opStartTime
+        });
+      }
+
+      console.log('[Sync Queue] Entity changes completed:', {
+        entityId,
+        totalOperations: operationCount,
+        totalDuration: Date.now() - startTime,
+        averageOpTime: (Date.now() - startTime) / operationCount
+      });
+    } catch (error) {
+      console.error('[Sync Queue] Entity changes failed:', {
+        entityId,
+        completedOps: operationCount,
+        totalOps: changes.length,
+        duration: Date.now() - startTime,
+        error
+      });
+      throw error;
+    }
+  }
+
+  private async processChange(change: PendingChange) {
+    try {
+      const currentMapping = this.idMappings.get(change.entityId);
+      console.log(`[Sync Queue] Starting operation:`, {
+        type: change.actionType,
+        entityId: change.entityId,
+        currentMapping,
+        allMappings: Array.from(this.idMappings.entries())
+      });
+      
       switch (change.actionType) {
         case 'CREATE_LIST':
           await this.processCreateList(change);
           break;
         case 'UPDATE_LIST':
-          await this.processUpdateList(change);
-          break;
         case 'DELETE_LIST':
-          await this.processDeleteList(change);
+          // Ensure we have a valid ID mapping
+          const mapping = this.idMappings.get(change.entityId);
+          if (!mapping || mapping.status !== 'completed') {
+            // Try to find mapping by actualId
+            const mappingByActualId = Array.from(this.idMappings.values())
+              .find(m => m.actualId === change.entityId);
+            
+            if (mappingByActualId) {
+              console.log('[Sync Queue] Found mapping by actual ID:', {
+                entityId: change.entityId,
+                mapping: mappingByActualId
+              });
+              // Update the mapping for this entity
+              this.idMappings.set(change.entityId, mappingByActualId);
+            } else {
+              console.warn('[Sync Queue] Cannot process operation - no valid mapping found:', {
+                type: change.actionType,
+                entityId: change.entityId,
+                currentMapping: mapping,
+                allMappings: Array.from(this.idMappings.entries())
+              });
+              throw new Error('Missing required ID mapping');
+            }
+          }
+          
+          if (change.actionType === 'UPDATE_LIST') {
+            await this.processUpdateList(change);
+          } else {
+            await this.processDeleteList(change);
+          }
           break;
-        default:
-          console.warn(`Unknown action type: ${change.actionType}`);
-          await databaseService.updatePendingChangeStatus(change.id, 'failed');
       }
     } catch (error: any) {
-      console.error(`Error processing change ${change.id}:`, error);
-      
-      if (error.response?.status === 409) {
-        try {
-          await this.resolveConflict(change, error);
-          return;
-        } catch (mergeError) {
-          console.error('[Sync] Failed to resolve conflict:', mergeError);
-        }
-      }
-      
-      if (change.retries >= this.MAX_RETRIES) {
-        await databaseService.updatePendingChangeStatus(change.id, 'failed');
-      } else {
-        const nextRetry = change.retries + 1;
-        await databaseService.updatePendingChangeStatus(
-          change.id,
-          'pending',
-          nextRetry
-        );
-        
-        // Apply exponential backoff
-        const delay = this.calculateBackoffDelay(nextRetry);
-        await new Promise(resolve => setTimeout(resolve, delay));
-        
-        // Retry the change
-        await this.processChange({
-          ...change,
-          retries: nextRetry
-        });
-      }
-    }
-  }
-
-  private async processCreateList(change: any) {
-    try {
-      const response = await api.post('/lists', change.data);
-      store.dispatch(updateListInStore(response.data));
-      await databaseService.removePendingChange(change.id);
-    } catch (error: any) {
-      // Check for conflict (list already exists)
-      if (error.response?.status === 409) {
-        console.log('[Sync] List already exists, resolving conflict...');
-        const existingList = await api.get(`/lists/${change.data.tempId}`);
-        store.dispatch(updateListInStore(existingList.data));
-        await databaseService.removePendingChange(change.id);
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  private async processUpdateList(change: any) {
-    try {
-      const response = await api.patch(`/lists/${change.entityId}`, change.data);
-      store.dispatch(updateListInStore(response.data));
-      await databaseService.removePendingChange(change.id);
-    } catch (error: any) {
-      // Check for conflict (list was updated by someone else)
-      if (error.response?.status === 409) {
-        console.log('[Sync] List was updated by someone else, fetching latest...');
-        const latestList = await api.get(`/lists/${change.entityId}`);
-        store.dispatch(updateListInStore(latestList.data));
-        await databaseService.removePendingChange(change.id);
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  private async processDeleteList(change: any) {
-    try {
-      await api.delete(`/lists/${change.entityId}`);
-      await databaseService.removePendingChange(change.id);
-    } catch (error: any) {
-      // If list doesn't exist, consider it successfully deleted
-      if (error.response?.status === 404) {
-        await databaseService.removePendingChange(change.id);
-      } else {
-        throw error;
-      }
-    }
-  }
-
-  private async resolveConflict(change: any, error: SyncError) {
-    const serverVersion = error.response?.data?.serverVersion;
-    const conflictType = error.response?.data?.conflictType;
-
-    if (!serverVersion) {
-      throw new Error('Server did not provide version information');
-    }
-
-    // Get the latest version from server
-    const latestList = await api.get(`/lists/${change.entityId}`);
-    
-    if (conflictType === 'DELETE') {
-      // List was deleted on server, remove local version
-      await databaseService.removePendingChange(change.id);
-      return;
-    }
-
-    // Merge changes
-    const mergedList = this.mergeChanges(
-      latestList.data,
-      change.data,
-      change.baseVersion
-    );
-
-    // Update local storage with merged changes
-    await databaseService.saveLists([mergedList]);
-    store.dispatch(updateListInStore(mergedList));
-
-    // Try to update server with merged changes
-    try {
-      const response = await api.patch(`/lists/${change.entityId}`, {
-        ...mergedList,
-        version: serverVersion
+      console.error(`[Sync Queue] Operation failed:`, {
+        changeId: change.id,
+        type: change.actionType,
+        entityId: change.entityId,
+        error: error.message,
+        mappings: Array.from(this.idMappings.entries())
       });
-      await databaseService.removePendingChange(change.id);
-      store.dispatch(updateListInStore(response.data));
-    } catch (error) {
-      // If still conflicting, keep in pending changes
-      console.warn('[Sync] Conflict persists after merge attempt');
       throw error;
     }
   }
 
-  private mergeChanges(serverList: List, localChanges: Partial<List>, baseVersion: number) {
-    const mergedList = { ...serverList };
-    const serverVersion = serverList.version ?? 1; // Default to version 1 if undefined
-
-    // If the base version matches the server's previous version,
-    // we can safely apply our changes
-    if (baseVersion === serverVersion - 1) {
-      return { ...mergedList, ...localChanges };
-    }
-
-    // Otherwise, we need to do a three-way merge
-    if (localChanges.items) {
-      const serverItemMap = new Map(serverList.items.map((item: ListItem) => [item._id, item]));
-      const mergedItems = localChanges.items.map((localItem: ListItem) => {
-        const serverItem = serverItemMap.get(localItem._id);
-        if (!serverItem) {
-          // Item was added locally
-          return localItem;
-        }
-        if (serverItem.updatedAt > localItem.updatedAt) {
-          // Server has newer changes
-          return serverItem;
-        }
-        // Local changes are newer
-        return localItem;
+  private async processCreateList(change: PendingChange) {
+    const startTime = Date.now();
+    try {
+      console.log('[Sync Queue] Creating list:', {
+        startTime,
+        tempId: change.entityId
       });
 
-      // Add any server items that weren't in local changes
-      serverList.items.forEach((serverItem: ListItem) => {
-        if (!mergedItems.some((item: ListItem) => item._id === serverItem._id)) {
-          mergedItems.push(serverItem);
-        }
+      const response = await api.post('/lists', change.data);
+      const newList = response.data;
+      
+      // Store ID mapping
+      const newMapping = {
+        tempId: change.entityId,
+        actualId: newList._id,
+        status: 'completed' as const
+      };
+
+      // Batch our storage operations
+      await Promise.all([
+        // Update ID mappings
+        (async () => {
+          this.idMappings.set(change.entityId, newMapping);
+          this.idMappings.set(newList._id, newMapping);
+        })(),
+        // Update store
+        store.dispatch(updateListInStore(newList)),
+        // Remove pending change
+        databaseService.removePendingChange(change.id)
+      ]);
+
+      console.log('[Sync Queue] List created:', {
+        duration: Date.now() - startTime,
+        tempId: change.entityId,
+        newId: newList._id
       });
 
-      mergedList.items = mergedItems;
+    } catch (error: any) {
+      console.error('[Sync Queue] Create failed:', {
+        duration: Date.now() - startTime,
+        error: error.message
+      });
+      throw error;
     }
+  }
 
-    return {
-      ...mergedList,
-      version: serverVersion
-    };
+  private getActualId(entityId: string): string {
+    const mapping = this.idMappings.get(entityId);
+    if (mapping?.status === 'completed') {
+      console.log('[Sync Queue] Found ID mapping:', {
+        entityId,
+        mapping
+      });
+      return mapping.actualId;
+    }
+    
+    // Try to find by actual ID
+    const mappingByActualId = Array.from(this.idMappings.values())
+      .find(m => m.actualId === entityId);
+    
+    if (mappingByActualId) {
+      console.log('[Sync Queue] Found reverse ID mapping:', {
+        entityId,
+        mapping: mappingByActualId
+      });
+      return mappingByActualId.actualId;
+    }
+    
+    console.log('[Sync Queue] No mapping found:', {
+      entityId,
+      allMappings: Array.from(this.idMappings.entries())
+    });
+    return entityId;
+  }
+
+  private async processUpdateList(change: PendingChange) {
+    const startTime = Date.now();
+    try {
+      const actualId = this.getActualId(change.entityId);
+      
+      console.log('[Sync Queue] Updating list:', {
+        startTime,
+        originalId: change.entityId,
+        actualId
+      });
+
+      const response = await api.patch(`/lists/${actualId}`, change.data);
+      
+      // Batch our storage operations
+      await Promise.all([
+        store.dispatch(updateListInStore(response.data)),
+        databaseService.removePendingChange(change.id)
+      ]);
+
+      console.log('[Sync Queue] List updated:', {
+        duration: Date.now() - startTime,
+        actualId
+      });
+    } catch (error: any) {
+      console.error('[Sync Queue] Update failed:', {
+        duration: Date.now() - startTime,
+        error: error.message
+      });
+      throw error;
+    }
+  }
+
+  private async processDeleteList(change: PendingChange) {
+    const startTime = Date.now();
+    try {
+      const actualId = this.getActualId(change.entityId);
+      
+      console.log('[Sync Queue] Deleting list:', {
+        startTime,
+        originalId: change.entityId,
+        actualId
+      });
+
+      await Promise.all([
+        api.delete(`/lists/${actualId}`),
+        databaseService.removePendingChange(change.id)
+      ]);
+
+      console.log('[Sync Queue] List deleted:', {
+        duration: Date.now() - startTime,
+        actualId
+      });
+    } catch (error: any) {
+      console.error('[Sync Queue] Delete failed:', {
+        duration: Date.now() - startTime,
+        error: error.message
+      });
+      throw error;
+    }
+  }
+
+  private async markDependentChangesFailed(entityId: string, changes: PendingChange[]) {
+    console.log('[Sync Queue] Marking dependent changes as failed:', {
+      entityId,
+      changes: changes.map(c => ({
+        id: c.id,
+        type: c.actionType
+      }))
+    });
+
+    for (const change of changes) {
+      await databaseService.updatePendingChangeStatus(change.id, 'failed');
+    }
   }
 }
 

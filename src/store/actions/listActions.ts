@@ -55,6 +55,7 @@ export const createList = createAsyncThunk(
         _id: tempId,
         ...data,
         items: [],
+        sharedWith: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       };

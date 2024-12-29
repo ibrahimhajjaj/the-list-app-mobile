@@ -14,6 +14,7 @@ import { ConfirmationModal } from '../../components/ConfirmationModal';
 import { ListDropdown } from '../../components/ListDropdown';
 import socketService from '../../services/socket';
 import { storage } from '../../services/storage';
+import { OfflineTestRunner } from '../../components/OfflineTestRunner';
 
 
 export default function ListsScreen() {
@@ -218,8 +219,8 @@ export default function ListsScreen() {
           await storage.saveSelectedList(nextList._id);
         }
 
-        await dispatch(deleteList(listToDelete)).unwrap();
         setShowDeleteConfirmation(false);
+        await dispatch(deleteList(listToDelete)).unwrap();
         setListToDelete(null);
       } catch (error) {
         console.error('Failed to delete list:', error);
@@ -472,6 +473,7 @@ export default function ListsScreen() {
           }}
         />
       </ScrollView>
+      <OfflineTestRunner />
     </View>
   );
 }

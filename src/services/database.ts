@@ -306,6 +306,20 @@ class DatabaseService {
       `);
     });
   }
+
+  async updatePendingChangeEntityId(changeId: number, newEntityId: string) {
+    console.log('[Database] Updating pending change entity ID:', {
+      changeId,
+      newEntityId
+    });
+    
+    await db.runAsync(
+      `UPDATE pending_changes 
+       SET entity_id = ? 
+       WHERE id = ?`,
+      [newEntityId, changeId]
+    );
+  }
 }
 
 export const databaseService = new DatabaseService();
