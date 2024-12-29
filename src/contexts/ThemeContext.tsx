@@ -23,10 +23,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       try {
         const settings = await storage.getSettings();
         if (settings?.theme) {
-          console.log('[ThemeContext] Loading saved theme:', settings.theme);
           setTheme(settings.theme);
         } else {
-          console.log('[ThemeContext] No saved theme, using system default:', systemColorScheme);
           setTheme(systemColorScheme || 'light');
         }
       } catch (error) {

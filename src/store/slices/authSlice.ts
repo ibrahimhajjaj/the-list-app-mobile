@@ -67,7 +67,13 @@ export const loadUser = createAsyncThunk(
   'auth/loadUser',
   async (_, { rejectWithValue }) => {
     try {
-      return await authService.validateSession();
+      const result = await authService.validateSession();
+      
+      if (!result.user || !result.token) {
+        throw new Error('Invalid session data');
+      }
+
+      return result;
     } catch (error: any) {
       return rejectWithValue(error.message);
     }
@@ -95,7 +101,7 @@ const authSlice = createSlice({
       state.token = null;
       state.error = null;
       state.loading = false;
-      authService.logout(); // Don't need to await here as it's not critical
+      authService.logout();
     },
     clearError: (state) => {
       state.error = null;
@@ -120,6 +126,7 @@ const authSlice = createSlice({
       })
       // Register
       .addCase(registerUser.pending, (state) => {
+        console.log('[Auth Slice] Registration attempt started');
         state.loading = true;
         state.error = null;
         state.lastAttempt = {
@@ -159,6 +166,14 @@ const authSlice = createSlice({
         state.error = null;
       })
       .addCase(loadUser.fulfilled, (state, action) => {
+        if (!action.payload.user || !action.payload.token) {
+          state.loading = false;
+          state.error = 'Invalid session data';
+          state.user = null;
+          state.token = null;
+          return;
+        }
+
         state.loading = false;
         state.user = action.payload.user;
         state.token = action.payload.token;
@@ -167,6 +182,8 @@ const authSlice = createSlice({
       .addCase(loadUser.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string;
+        state.user = null;
+        state.token = null;
       })
       // Update User
       .addCase(updateUser.pending, (state) => {
@@ -174,6 +191,7 @@ const authSlice = createSlice({
         state.error = null;
       })
       .addCase(updateUser.fulfilled, (state, action) => {
+        console.log('[Auth Slice] User profile updated successfully');
         state.loading = false;
         state.user = action.payload;
       })

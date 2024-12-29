@@ -8,7 +8,9 @@ import { RootStackParamList } from './types';
 import { SplashScreen } from '../screens/SplashScreen';
 import { storage } from '../services/storage';
 import { checkPermissions } from '../utils/permissions';
-import { Platform } from 'react-native';
+import socketService from '../services/socket';
+import { View } from 'react-native';
+import { ConnectionStatusIndicator } from '../components/ConnectionStatusIndicator';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -20,17 +22,20 @@ export function RootNavigator() {
   const [needsPermissions, setNeedsPermissions] = useState(false);
   const initializationRef = useRef<boolean>(false);
   const mountedRef = useRef(true);
+  const socketInitializedRef = useRef(false);
+  const previousTokenRef = useRef<string | null>(null);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       mountedRef.current = false;
+      if (socketService.isConnected) {
+        socketService.disconnect();
+      }
     };
   }, []);
 
   useEffect(() => {
     async function initializeApp() {
-      // Ensure initialization only runs once
       if (!mountedRef.current || initializationRef.current) {
         return;
       }
@@ -38,7 +43,6 @@ export function RootNavigator() {
       initializationRef.current = true;
 
       try {
-        // Check permissions first
         const permissionsStatus = await checkPermissions();
         const permissionsNeeded = !permissionsStatus.notifications || !permissionsStatus.batteryOptimization;
         
@@ -47,16 +51,21 @@ export function RootNavigator() {
         setNeedsPermissions(permissionsNeeded);
 
         if (!permissionsNeeded) {
-          // Check authentication
           const storedToken = await storage.getAuthToken();
           
-          if (storedToken && !user && mountedRef.current) {
-            await dispatch(loadUser()).unwrap();
+          if (storedToken) {
+            try {
+              await dispatch(loadUser()).unwrap();
+            } catch (error) {
+              console.error('[RootNavigator] Failed to load user session:', error);
+              // Clear token if validation fails
+              await storage.saveAuthToken(null);
+            }
           }
         }
       } catch (error: any) {
         if (mountedRef.current) {
-          console.error('[RootNavigator] Error:', error);
+          console.error('[RootNavigator] Initialization error:', error);
         }
       } finally {
         if (mountedRef.current) {
@@ -66,7 +75,27 @@ export function RootNavigator() {
     }
 
     initializeApp();
-  }, [dispatch, user]);
+  }, [dispatch]);
+
+  useEffect(() => {
+    const handleSocketConnection = async () => {
+      previousTokenRef.current = token;
+
+      if (token && user && !isInitializing) {
+        if (!socketService.isConnected && !socketInitializedRef.current) {
+          socketInitializedRef.current = true;
+          await socketService.connect(token);
+        }
+      } else if (!token && socketService.isConnected) {
+        socketInitializedRef.current = false;
+        socketService.disconnect();
+      } else if (!user && token) {
+        console.log('[RootNavigator] Waiting for user data before connecting socket');
+      }
+    };
+
+    handleSocketConnection();
+  }, [token, user, isInitializing]);
 
   const handleSplashComplete = useCallback(() => {
     if (mountedRef.current) {
@@ -74,7 +103,6 @@ export function RootNavigator() {
     }
   }, []);
 
-  // Show splash screen while initializing or waiting for minimum time
   if (isInitializing || !isSplashReady) {
     return <SplashScreen onReady={handleSplashComplete} />;
   }
@@ -82,21 +110,24 @@ export function RootNavigator() {
   const shouldShowAuth = !token || needsPermissions;
   
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
-      {shouldShowAuth ? (
-        <Stack.Screen 
-          name="Auth" 
-          component={AuthNavigator}
-          options={{ animationTypeForReplace: 'pop' }}
-          initialParams={{ needsPermissions }}
-        />
-      ) : (
-        <Stack.Screen 
-          name="Main" 
-          component={MainNavigator}
-          options={{ animationTypeForReplace: 'push' }}
-        />
-      )}
-    </Stack.Navigator>
+    <View style={{ flex: 1 }}>
+      <Stack.Navigator screenOptions={{ headerShown: false }}>
+        {shouldShowAuth ? (
+          <Stack.Screen 
+            name="Auth" 
+            component={AuthNavigator}
+            options={{ animationTypeForReplace: 'pop' }}
+            initialParams={{ needsPermissions }}
+          />
+        ) : (
+          <Stack.Screen 
+            name="Main" 
+            component={MainNavigator}
+            options={{ animationTypeForReplace: 'push' }}
+          />
+        )}
+      </Stack.Navigator>
+      <ConnectionStatusIndicator />
+    </View>
   );
 } 

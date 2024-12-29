@@ -15,9 +15,11 @@ import { ListDropdown } from '../../components/ListDropdown';
 import socketService from '../../services/socket';
 import { storage } from '../../services/storage';
 
+
 export default function ListsScreen() {
   const dispatch = useAppDispatch();
   const { lists, loading: listsLoading } = useAppSelector((state) => state.lists);
+  const auth = useAppSelector((state) => state.auth);
   const { isDark } = useTheme();
   const [newListName, setNewListName] = useState('');
   const [selectedList, setSelectedList] = useState<string | null>(null);
@@ -31,22 +33,17 @@ export default function ListsScreen() {
   const colors = useThemeColors();
 
   useEffect(() => {
+    console.log('[ListsScreen] Full auth state:', auth);
+  }, [auth]);
+
+  useEffect(() => {
     if (!selectedList) return;
 
-    console.log('[ListsScreen] Joining WebSocket room for list:', selectedList);
     socketService.joinList(selectedList);
 
     // Listen for real-time updates
     if (socketService.socket) {
-      console.log('[ListsScreen] Setting up WebSocket listeners');
-      
       const onListUpdated = (data: any) => {
-        console.log('[ListsScreen] Received list update:', {
-          listId: data.listId,
-          type: data.type,
-          updatedBy: data.updatedBy
-        });
-        
         // Refresh lists to get the latest data
         dispatch(fetchLists());
       };
@@ -55,7 +52,6 @@ export default function ListsScreen() {
 
       // Cleanup: leave room and remove listeners
       return () => {
-        console.log('[ListsScreen] Cleaning up WebSocket listeners and leaving room:', selectedList);
         socketService.socket?.off('listUpdated', onListUpdated);
         socketService.leaveList(selectedList);
       };
@@ -68,25 +64,38 @@ export default function ListsScreen() {
     // Load the previously selected list from storage
     const loadSelectedList = async () => {
       const savedListId = await storage.getSelectedList();
-      if (savedListId) {
+      if (savedListId && lists?.some(list => list._id === savedListId)) {
         setSelectedList(savedListId);
+      } else {
+        await storage.saveSelectedList(null);
       }
     };
     loadSelectedList();
+
+    // Cleanup on unmount
+    return () => {
+      if (selectedList) {
+        socketService.leaveList(selectedList);
+      }
+    };
   }, [dispatch]);
 
   useEffect(() => {
     if (lists?.length > 0 && !selectedList) {
-      console.log('[ListsScreen] Auto-selecting first list:', lists[0]._id);
       setSelectedList(lists[0]._id);
+    } else if (lists?.length === 0) {
+      setSelectedList(null);
+      storage.saveSelectedList(null);
     }
   }, [lists, selectedList]);
 
   const handleListPress = async (listId: string) => {
-    console.log('[ListsScreen] Selecting list:', listId);
+    if (selectedList) {
+      socketService.leaveList(selectedList);
+    }
+    
     setSelectedList(listId);
     setIsDropdownOpen(false);
-    // Save the selected list to storage
     await storage.saveSelectedList(listId);
   };
 

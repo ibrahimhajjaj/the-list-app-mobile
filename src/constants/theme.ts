@@ -1,5 +1,6 @@
 import { StyleSheet } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
+import {colors} from '../theme/colors'
 
 export const fonts = {
   regular: 'Poppins-Regular',
@@ -28,6 +29,8 @@ const lightColors = {
   border: 'hsl(214.3, 31.8%, 91.4%)',      // Very Light Gray
   input: 'hsl(214.3, 31.8%, 91.4%)',       // Very Light Gray
   ring: 'hsl(222.2, 84%, 4.9%)',           // Near Black
+  success: '#22c55e',
+  warning: '#f59e0b',
 };
 
 const darkColors = {
@@ -50,13 +53,12 @@ const darkColors = {
   border: 'hsl(217.2, 32.6%, 25%)',        // Darker gray for better contrast in dark mode
   input: 'hsl(217.2, 32.6%, 17.5%)',       // Dark Gray
   ring: 'hsl(212.7, 26.8%, 83.9%)',        // Light Gray
+  success: '#22c55e',
+  warning: '#f59e0b',
 };
 
 export const theme = {
-  colors: {
-    light: lightColors,
-    dark: darkColors,
-  },
+  colors,
   typography: {
     fonts,
     fontSize: {
