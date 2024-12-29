@@ -23,10 +23,12 @@
     "expo": "~52.0.20",
     "expo-battery": "~9.0.1",
     "expo-intent-launcher": "~12.0.1",
+    "expo-linking": "^7.0.3",
     "expo-modules-core": "^2.1.2",
     "expo-notifications": "^0.29.11",
     "expo-secure-store": "^14.0.0",
     "expo-splash-screen": "^0.29.18",
+    "expo-sqlite": "~15.0.4",
     "expo-status-bar": "~2.0.0",
     "expo-system-ui": "~4.0.6",
     "lodash": "^4.17.21",
@@ -41,8 +43,7 @@
     "react-native-screens": "~4.1.0",
     "react-native-svg": "^15.10.1",
     "react-redux": "^9.2.0",
-    "socket.io-client": "^4.8.1",
-    "expo-sqlite": "~15.0.4"
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

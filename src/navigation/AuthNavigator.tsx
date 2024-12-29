@@ -4,7 +4,8 @@ import { AuthStackParamList } from './types';
 import LoginScreen from '../screens/auth/LoginScreen';
 import RegisterScreen from '../screens/auth/RegisterScreen';
 import { PermissionsScreen } from '../screens/auth/PermissionsScreen';
-import { SplashScreen } from '../screens/SplashScreen';
+import ForgotPasswordScreen from '../screens/auth/ForgotPasswordScreen';
+import ResetPasswordScreen from '../screens/auth/ResetPasswordScreen';
 import { useRoute } from '@react-navigation/native';
 import type { RootStackScreenProps } from './types';
 
@@ -24,6 +25,8 @@ export default function AuthNavigator() {
       <Stack.Screen name="Permissions" component={PermissionsScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name="ForgotPassword" component={ForgotPasswordScreen} />
+      <Stack.Screen name="ResetPassword" component={ResetPasswordScreen} />
     </Stack.Navigator>
   );
 } 

@@ -137,6 +137,12 @@ export default function LoginScreen({ navigation }: Props) {
             autoCapitalize="none"
           />
 
+          <TouchableOpacity onPress={() => navigation.navigate('ForgotPassword')}>
+            <Text style={[styles.forgotPasswordText, { color: colors.primary }]}>
+              Forgot Password?
+            </Text>
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[
               styles.loginButton,
@@ -241,5 +247,11 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.body,
     fontWeight: theme.typography.fontWeight.medium,
     textDecorationLine: 'underline',
+  },
+  forgotPasswordText: {
+    fontSize: theme.typography.fontSize.body,
+    textAlign: 'right',
+    marginBottom: theme.spacing.m,
+    fontWeight: theme.typography.fontWeight.medium,
   },
 }); 

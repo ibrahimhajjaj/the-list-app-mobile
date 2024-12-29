@@ -127,7 +127,7 @@ export function RootNavigator() {
           />
         )}
       </Stack.Navigator>
-      <ConnectionStatusIndicator />
+      {!shouldShowAuth && <ConnectionStatusIndicator />}
     </View>
   );
 } 

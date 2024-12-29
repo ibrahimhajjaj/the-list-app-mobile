@@ -18,7 +18,7 @@ import { updateUser, logout } from '../../store/slices/authSlice';
 import { theme } from '../../constants/theme';
 import { useThemeColors } from '../../constants/theme';
 import { commonStyles } from '../../theme/commonStyles';
-import { Bell, ChevronRight, LogOut, Settings, User, ArrowLeft } from 'lucide-react-native';
+import { Bell, ChevronRight, LogOut, Settings, User, ArrowLeft, Lock } from 'lucide-react-native';
 import { 
   toggleNotifications,
   toggleTitleChangeNotifications,
@@ -28,6 +28,7 @@ import {
   toggleItemCompleteNotifications,
 } from '../../store/slices/settingsSlice';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import ChangePasswordForm from '../../components/ChangePasswordForm';
 
 interface NotificationSettingRowProps {
   title: string;
@@ -64,6 +65,7 @@ export default function ProfileScreen() {
     itemCompleteNotifications,
   } = useAppSelector((state) => state.settings);
   const [isEditing, setIsEditing] = useState(false);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
   const [name, setName] = useState(user?.name || '');
   const [email, setEmail] = useState(user?.email || '');
   const colors = useThemeColors();
@@ -179,7 +181,10 @@ export default function ProfileScreen() {
                       borderColor: colors.border
                     }
                   ]}
-                  onPress={() => setIsEditing(false)}
+                  onPress={() => {
+                    setIsEditing(false);
+                    setIsChangingPassword(false);
+                  }}
                 >
                   <Text style={[styles.cancelButtonText, { color: colors.primary }]}>
                     Cancel
@@ -202,6 +207,29 @@ export default function ProfileScreen() {
                   )}
                 </TouchableOpacity>
               </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.changePasswordButton,
+                  {
+                    backgroundColor: colors.card,
+                    borderColor: colors.border,
+                  }
+                ]}
+                onPress={() => setIsChangingPassword(!isChangingPassword)}
+              >
+                <Lock size={20} color={colors.foreground} />
+                <Text style={[styles.changePasswordText, { color: colors.foreground }]}>
+                  Change Password
+                </Text>
+                <ChevronRight size={20} color={colors.mutedForeground} />
+              </TouchableOpacity>
+
+              {isChangingPassword && (
+                <View style={[styles.section, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                  <ChangePasswordForm />
+                </View>
+              )}
             </View>
           ) : (
             <>
@@ -375,6 +403,19 @@ const styles = StyleSheet.create({
     ...theme.shadows.small,
   },
   editProfileText: {
+    flex: 1,
+    marginLeft: theme.spacing.m,
+    fontSize: 16,
+  },
+  changePasswordButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: theme.spacing.m,
+    borderRadius: theme.borderRadius.m,
+    marginTop: theme.spacing.m,
+    borderWidth: 1,
+  },
+  changePasswordText: {
     flex: 1,
     marginLeft: theme.spacing.m,
     fontSize: 16,

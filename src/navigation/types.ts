@@ -13,6 +13,8 @@ export type AuthStackParamList = {
   Permissions: undefined;
   Login: undefined;
   Register: undefined;
+  ForgotPassword: undefined;
+  ResetPassword: { token: string };
 };
 
 export type MainTabParamList = {
