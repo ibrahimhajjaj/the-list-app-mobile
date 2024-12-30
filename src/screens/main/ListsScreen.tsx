@@ -15,6 +15,7 @@ import { ListDropdown } from '../../components/ListDropdown';
 import socketService from '../../services/socket';
 import { storage } from '../../services/storage';
 import { OfflineTestRunner } from '../../components/OfflineTestRunner';
+import { DatabaseInspector } from '../../components/DatabaseInspector';
 
 
 export default function ListsScreen() {
@@ -474,6 +475,7 @@ export default function ListsScreen() {
         />
       </ScrollView>
       <OfflineTestRunner />
+      <DatabaseInspector />
     </View>
   );
 }
