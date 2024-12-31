@@ -18,19 +18,27 @@ export interface SharedUser {
   _id?: string;
 }
 
+// Define allowed update fields
+export type AllowedListUpdates = {
+  title?: string;
+  items?: ListItem[];
+  category?: string;
+};
+
 export interface List {
   _id: string;
   title: string;
   items: ListItem[];
-  owner: ListOwner | string;
-  sharedWith: SharedUser[];
+  pendingSync: boolean;
+  isTemp?: boolean;
+  shared?: boolean;
   createdAt: string;
   updatedAt: string;
-  shared?: boolean;
-  isTemp?: boolean;
-  pendingSync?: boolean;
-  version?: number;
-  localVersion?: number;
+  __v: number;
+  localVersion: number;
+  category?: string;
+  owner?: string;
+  sharedWith?: string[];
 }
 
 export interface ListsState {

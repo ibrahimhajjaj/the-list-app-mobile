@@ -3,7 +3,7 @@ import api from '../../services/api';
 import { storage } from '../../services/storage';
 import { databaseService } from '../../services/database';
 import { store } from '../index';
-import type { List, ListItem } from '../../types/list';
+import type { List, ListItem, AllowedListUpdates } from '../../types/list';
 import { syncService } from '../../services/sync';
 import { 
   DeleteListItemPayload, 
@@ -78,7 +78,7 @@ export const createList = createAsyncThunk(
         updatedAt: new Date().toISOString(),
         isTemp: true,
         pendingSync: !isConnected,
-        version: 0,
+        __v: 0,
         localVersion: 0
       };
 
@@ -159,74 +159,50 @@ export const createList = createAsyncThunk(
   }
 );
 
+function validateListUpdates(data: Partial<List>): AllowedListUpdates {
+  const allowedUpdates: AllowedListUpdates = {};
+  
+  // Only include allowed fields
+  if ('title' in data) allowedUpdates.title = data.title;
+  if ('items' in data) allowedUpdates.items = data.items;
+  if ('category' in data) allowedUpdates.category = data.category;
+
+  console.log('[ListActions Debug] Preparing update:', {
+    fields: Object.keys(allowedUpdates)
+  });
+
+  return allowedUpdates;
+}
+
 export const updateList = createAsyncThunk(
   'lists/updateList',
   async ({ listId, data }: { listId: string, data: Partial<List> }, { rejectWithValue }) => {
     try {
-      console.log('[ListActions Debug] Updating list:', {
-        listId: listId,
-        displayId: listId.substring(0, 8),
-        changes: Object.keys(data),
-        isTemp: listId.startsWith('temp_')
-      });
-
       // Check network state from Redux store
       const state = store.getState();
       const isConnected = state.network.isConnected && state.network.isInternetReachable;
 
       // Update local storage first
       const storedLists = await storage.getLists() || [];
-
-      console.log('[ListActions Debug] Looking up list:', {
-        listId,
-        fullListId: listId,
-        isTemp: listId.startsWith('temp_'),
-        totalLists: storedLists.length,
-        tempLists: storedLists.filter(l => l._id?.startsWith('temp_')).length,
-        listSummary: storedLists.map(l => ({
-          id: l._id,
-          title: l.title,
-          isTemp: l._id?.startsWith('temp_')
-        }))
-      });
-      
       const targetList = storedLists.find(list => list._id === listId);
-      
-      console.log('[ListActions Debug] Current list state:', {
-        listId,
-        fullListId: listId,
-        found: !!targetList,
-        currentTitle: targetList?.title,
-        isTemp: targetList?._id?.startsWith('temp_'),
-        version: targetList?.version,
-        idMapping: targetList?.isTemp ? await databaseService.getIdMapping(listId) : null
-      });
 
       if (!targetList) {
-        const isTestId = listId.startsWith('invalid_') || listId.startsWith('test_');
-        const logLevel = isTestId ? 'debug' : 'error';
-        console[logLevel](`[ListActions ${isTestId ? 'Test' : 'Error'}] List not found:`, {
-          listId,
-          fullListId: listId,
-          totalLists: storedLists.length,
-          availableIds: storedLists.map(l => l._id),
-          listDetails: storedLists.map(l => ({
-            id: l._id,
-            title: l.title,
-            isTemp: l._id?.startsWith('temp_'),
-            version: l.version
-          })),
-          idMapping: await databaseService.getIdMapping(listId)
-        });
         return rejectWithValue('List not found in storage');
       }
 
-      // Ensure we have all required properties with defaults
+      // Validate and filter updates
+      const validatedUpdates = validateListUpdates(data);
+      
+      console.log('[ListActions Debug] Updating list:', {
+        listId: listId.substring(0, 8),
+        changes: Object.keys(validatedUpdates),
+        currentVersion: targetList.__v
+      });
+
+      // Update only allowed fields in local storage
       const updatedList = {
         ...targetList,
-        ...data,
-        items: targetList.items || [],
-        sharedWith: targetList.sharedWith || [],
+        ...validatedUpdates,
         updatedAt: new Date().toISOString()
       };
 
@@ -237,33 +213,55 @@ export const updateList = createAsyncThunk(
 
       if (!isConnected) {
         console.log('[ListActions Debug] Adding offline update:', {
-          changes: Object.keys(data),
+          changes: Object.keys(validatedUpdates),
           isTemp: listId.startsWith('temp_'),
           listId: listId
         });
         
-        await syncService.addPendingChange('UPDATE_LIST', listId, data);
+        await syncService.addPendingChange('UPDATE_LIST', listId, validatedUpdates);
         return updatedList;
       }
 
-      // If online, update on server
-      const response = await api.put(`/lists/${listId}`, data);
-      const serverUpdatedList = response.data;
-      
-      console.log('[ListActions Debug] Server response:', {
-        listId: listId.substring(0, 8),
-        actualId: serverUpdatedList._id.substring(0, 8),
-        newVersion: serverUpdatedList.__v,
-        title: serverUpdatedList.title
-      });
+      try {
+        // If online, update on server with only allowed fields
+        const response = await api.patch(`/lists/${listId}`, validatedUpdates);
+        const serverUpdatedList = response.data;
+        
+        console.log('[ListActions Debug] Server response:', {
+          listId: listId.substring(0, 8),
+          actualId: serverUpdatedList._id.substring(0, 8),
+          newVersion: serverUpdatedList.__v,
+          title: serverUpdatedList.title,
+          sentFields: Object.keys(validatedUpdates)
+        });
 
-      // Update local storage with server response
-      const finalLists = storedLists.map(list =>
-        list._id === listId ? serverUpdatedList : list
-      );
-      await storage.saveLists(finalLists);
+        // Update local storage with server response
+        const finalLists = storedLists.map(list =>
+          list._id === listId ? serverUpdatedList : list
+        );
+        await storage.saveLists(finalLists);
 
-      return serverUpdatedList;
+        return serverUpdatedList;
+      } catch (error: any) {
+        // Handle version conflict
+        if (error.response?.status === 409) {
+          console.log('[ListActions Debug] Version conflict detected:', {
+            serverVersion: error.response.data.serverData.__v,
+            serverData: error.response.data.serverData,
+            conflictType: error.response.data.conflictType
+          });
+
+          // Use conflict resolution service to resolve the conflict
+          const resolvedList = await syncService.handleConflict(
+            listId,
+            error.response.data.serverData,
+            error.response.data.conflictType
+          );
+
+          return resolvedList;
+        }
+        throw error;
+      }
     } catch (error: any) {
       console.error('[ListActions Debug] Update failed:', {
         listId: listId.substring(0, 8),

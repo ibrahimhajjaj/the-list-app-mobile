@@ -3,6 +3,7 @@ import api from './api';
 import { store, updateListInStore } from '../store';
 import { List } from '../types/list';
 import { storage } from './storage';
+import { conflictResolutionService } from './conflictResolution';
 
 interface PendingChange {
   id: number;
@@ -698,24 +699,34 @@ class SyncService {
       serverData
     });
 
-    // Only merge fields that are allowed to be updated
-    const allowedUpdates = ['title', 'items', 'category'] as const;
-    const mergedData: Record<string, any> = {};
-    
-    allowedUpdates.forEach(field => {
-      if (serverData[field] !== undefined) {
-        mergedData[field] = serverData[field];
-      }
-    });
+    // Get local list data
+    const lists = await storage.getLists();
+    const localList = lists.find(list => list._id === entityId);
 
-    console.log('[Sync Queue] Merged data:', {
-      entityId,
-      mergedFields: Object.keys(mergedData),
-      originalChanges: Object.keys(serverData),
-      serverVersion: serverData.__v
-    });
+    if (!localList) {
+      console.warn('[Sync Queue] No local list found for conflict resolution:', entityId);
+      return serverData;
+    }
 
-    return mergedData;
+    try {
+      // Use conflict resolution service
+      const resolvedList = await conflictResolutionService.resolveListConflict(
+        localList,
+        serverData,
+        conflictType
+      );
+
+      console.log('[Sync Queue] Conflict resolved:', {
+        entityId,
+        resolvedVersion: resolvedList.__v
+      });
+
+      return resolvedList;
+    } catch (error) {
+      console.error('[Sync Queue] Conflict resolution failed:', error);
+      // Fallback to server data on error
+      return serverData;
+    }
   }
 }
 

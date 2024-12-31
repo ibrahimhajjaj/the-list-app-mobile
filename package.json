@@ -9,7 +9,7 @@
     "web": "expo start --web",
     "export:android": "expo prebuild -p android && cd android && ./gradlew assembleRelease",
     "export:ios": "expo prebuild -p ios && cd ios && xcodebuild -workspace TheListApp.xcworkspace -scheme TheListApp -configuration Release -sdk iphonesimulator",
-    "lint": "eslint ."
+    "lint": "eslint . "
   },
   "dependencies": {
     "@gorhom/bottom-sheet": "^5.0.6",

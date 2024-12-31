@@ -1,5 +1,6 @@
 import * as SQLite from 'expo-sqlite';
 import { Settings } from '../types/settings';
+import { ConflictDetails } from './conflictResolution';
 
 const db = SQLite.openDatabaseSync('thelistapp.db');
 
@@ -59,6 +60,17 @@ class DatabaseService {
         updated_at INTEGER NOT NULL
       );
 
+      CREATE TABLE IF NOT EXISTS conflict_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        type TEXT NOT NULL,
+        local_data TEXT NOT NULL,
+        server_data TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        resolution TEXT,
+        metadata TEXT,
+        created_at INTEGER NOT NULL
+      );
+
       -- Create indices for frequently queried columns
       CREATE INDEX IF NOT EXISTS idx_lists_is_shared ON lists(is_shared);
       CREATE INDEX IF NOT EXISTS idx_lists_last_updated ON lists(last_updated);
@@ -70,6 +82,8 @@ class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_id_mappings_temp_id ON id_mappings(temp_id);
       CREATE INDEX IF NOT EXISTS idx_id_mappings_actual_id ON id_mappings(actual_id);
       CREATE INDEX IF NOT EXISTS idx_id_mappings_status ON id_mappings(status);
+      CREATE INDEX IF NOT EXISTS idx_conflict_history_timestamp ON conflict_history(timestamp);
+      CREATE INDEX IF NOT EXISTS idx_conflict_history_type ON conflict_history(type);
     `);
   }
 
@@ -401,6 +415,7 @@ class DatabaseService {
         DELETE FROM selected_list;
         DELETE FROM pending_changes;
         DELETE FROM id_mappings;
+        DELETE FROM conflict_history;
       `);
     });
   }
@@ -552,6 +567,79 @@ class DatabaseService {
 
     console.log('[Database Debug] ID mapping removed:', {
       tempId: tempId.substring(0, 8)
+    });
+  }
+
+  // Conflict history methods
+  async batchSaveConflictHistory(conflicts: ConflictDetails[]): Promise<void> {
+    console.log('[Database] Saving conflict history batch:', {
+      count: conflicts.length
+    });
+
+    await db.withTransactionAsync(async () => {
+      for (const conflict of conflicts) {
+        await db.runAsync(
+          `INSERT INTO conflict_history 
+           (type, local_data, server_data, timestamp, resolution, metadata, created_at) 
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            conflict.type,
+            JSON.stringify(conflict.localData),
+            JSON.stringify(conflict.serverData),
+            conflict.timestamp,
+            conflict.resolution || null,
+            conflict.metadata ? JSON.stringify(conflict.metadata) : null,
+            Date.now()
+          ]
+        );
+      }
+    });
+  }
+
+  async getConflictHistory(limit: number = 100): Promise<ConflictDetails[]> {
+    console.log('[Database] Fetching conflict history:', { limit });
+
+    const results = await db.getAllAsync<{
+      type: string;
+      local_data: string;
+      server_data: string;
+      timestamp: number;
+      resolution: string | null;
+      metadata: string | null;
+    }>(
+      `SELECT type, local_data, server_data, timestamp, resolution, metadata 
+       FROM conflict_history 
+       ORDER BY timestamp DESC 
+       LIMIT ?`,
+      [limit]
+    );
+
+    return results.map(row => ({
+      type: row.type,
+      localData: JSON.parse(row.local_data),
+      serverData: JSON.parse(row.server_data),
+      timestamp: row.timestamp,
+      resolution: row.resolution || undefined,
+      metadata: row.metadata ? JSON.parse(row.metadata) : undefined
+    }));
+  }
+
+  async clearConflictHistory(): Promise<void> {
+    console.log('[Database] Clearing conflict history');
+    await db.runAsync('DELETE FROM conflict_history');
+  }
+
+  async deleteConflictHistoryBefore(timestamp: number): Promise<void> {
+    console.log('[Database] Deleting old conflict history:', { before: new Date(timestamp) });
+    
+    const result = await db.runAsync(
+      'DELETE FROM conflict_history WHERE timestamp < ?',
+      [timestamp]
+    );
+
+    console.log('[Database] Deleted conflict history:', {
+      count: result.changes,
+      before: new Date(timestamp)
     });
   }
 }
