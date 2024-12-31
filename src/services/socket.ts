@@ -229,18 +229,12 @@ class SocketService {
     }
 
     this._socket.on('connect', () => {
-      console.log('[SocketService] Connected successfully', {
-        socketId: this._socket?.id,
-        reconnectAttempts: this.reconnectAttempts,
-        timestamp: new Date().toISOString()
-      });
-      
       this._isConnected = true;
       this.resetReconnectAttempts();
       this.lastPingTime = Date.now();
       
+      // Process any pending room joins that were queued during disconnection
       if (this.pendingJoins.size > 0) {
-        console.log('[SocketService] Processing pending room joins:', Array.from(this.pendingJoins));
         this.pendingJoins.forEach(listId => {
           this.joinList(listId);
         });
@@ -279,11 +273,8 @@ class SocketService {
     });
 
     this._socket.on('error', (error) => {
-      console.error('[SocketService] Socket error:', {
-        error,
-        socketId: this._socket?.id,
-        isConnected: this._isConnected
-      });
+      this._isConnected = false;
+      this.handleReconnect();
     });
 
     this._socket.on('notification', async (data: { type: string; data: any }) => {
@@ -344,14 +335,7 @@ class SocketService {
       }
     });
 
-    this._socket.on('joinedList', (data) => {
-      // Room join confirmation received
-      console.log('[SocketService] Room join confirmed:', {
-        listId: data.listId,
-        socketId: this._socket?.id,
-        timestamp: new Date().toISOString()
-      });
-    });
+    this._socket.on('joinedList', (data) => {});
 
     this._socket.on('leftList', (data) => {
       // Room leave confirmation received

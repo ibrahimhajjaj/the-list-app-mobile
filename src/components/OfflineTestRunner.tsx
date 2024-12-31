@@ -7,7 +7,6 @@ import { createList, updateList, deleteList, fetchLists } from '../store/actions
 import { setNetworkState, resetNetworkState } from '../store/slices/networkSlice';
 import { storage } from '../services/storage';
 import { databaseService } from '../services/database';
-import { syncService } from '../services/sync';
 import { ClipboardCheck } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { store } from '../store';
@@ -30,7 +29,7 @@ const persistLogs = async (logs: TestLog[]) => {
   try {
     await AsyncStorage.setItem(OFFLINE_LOGS_KEY, JSON.stringify(logs));
   } catch (error) {
-    console.error('Failed to persist logs:', error);
+    // Non-critical error, failed to persist logs
   }
 };
 
@@ -45,15 +44,40 @@ const loadPersistedLogs = async (): Promise<TestLog[]> => {
       }));
     }
   } catch (error) {
-    console.error('Failed to load persisted logs:', error);
+    // Non-critical error, failed to load persisted logs
   }
   return [];
 };
 
 const logToConsole = (message: string, type: TestLog['type'] = 'info') => {
   const timestamp = new Date().toISOString();
-  const prefix = type === 'error' ? '❌' : type === 'success' ? '✅' : 'ℹ️';
-  console.log(`${prefix} [${timestamp}] ${message}`);
+  let formattedMessage = '';
+  
+  // Format based on message type
+  if (message.includes('Network switched to')) {
+    // Network state changes - using less alarming colors
+    const isOnline = message.includes('online');
+    const color = isOnline ? '\x1b[32m' : '\x1b[33m'; // Green for online, Yellow for offline
+    const icon = isOnline ? '🌐' : '📴';
+    const status = isOnline ? '[✓] Online' : '[✓] Offline';
+    formattedMessage = `${color}${icon} Network: ${status}\x1b[0m`;
+    console.log(formattedMessage);
+  } else if (message.includes('Test')) {
+    // Test suite headers
+    console.log('\n\x1b[36m%s\x1b[0m', message); // Cyan for test suite headers
+  } else if (message.startsWith('✓')) {
+    // Successful test cases
+    console.log('\x1b[32m%s\x1b[0m', `  [✓] ${message.substring(2)}`); // Green for passing tests
+  } else if (type === 'error') {
+    // Error messages
+    console.log('\x1b[31m%s\x1b[0m', `  [✖] ${message}`); // Red for errors
+  } else if (type === 'success') {
+    // Success messages
+    console.log('\x1b[32m%s\x1b[0m', `  [✓] ${message}`); // Green for success
+  }
+
+  // Return formatted message for UI
+  return `${type === 'error' ? '❌' : type === 'success' ? '✅' : 'ℹ️'} [${timestamp}] ${message}`;
 };
 
 // Add helper function for waiting
@@ -97,33 +121,27 @@ const logStorageState = async (context: string) => {
     }));
 
   // Create a concise summary
-  const summary = {
-    total: storedLists.length,
-    testLists: uniqueLists.length,
-    pending: pendingChanges.length,
-    duplicates: duplicateTitles.length
-  };
-
-  // Only show detailed list info if there are 5 or fewer lists
-  const showDetails = uniqueLists.length <= 5;
-  
-  console.log(`[Storage State - ${context}]`, {
-    summary,
-    ...(showDetails && {
+  return {
+    context,
+    summary: {
+      total: storedLists.length,
+      testLists: uniqueLists.length,
+      pending: pendingChanges.length,
+      duplicates: duplicateTitles.length
+    },
+    details: uniqueLists.length <= 5 ? {
       lists: uniqueLists.map(l => ({
         id: l._id.substring(0, 8),
         title: l.title,
         v: l.__v || 0
       }))
-    }),
-    ...(duplicateTitles.length > 0 && { duplicates: duplicateTitles }),
-    ...(pendingChanges.length > 0 && {
-      pendingChanges: pendingChanges.map(c => ({
-        type: c.actionType,
-        id: c.entityId.substring(0, 8)
-      }))
-    })
-  });
+    } : undefined,
+    duplicates: duplicateTitles.length > 0 ? duplicateTitles : undefined,
+    pendingChanges: pendingChanges.length > 0 ? pendingChanges.map(c => ({
+      type: c.actionType,
+      id: c.entityId.substring(0, 8)
+    })) : undefined
+  };
 };
 
 export function OfflineTestRunner() {
@@ -138,15 +156,7 @@ export function OfflineTestRunner() {
   // Track network state changes
   useEffect(() => {
     const isOnline = networkState.isConnected && networkState.isInternetReachable;
-    console.log('[Network Change] State updated:', {
-      isOnline,
-      state: {
-        isConnected: networkState.isConnected,
-        isInternetReachable: networkState.isInternetReachable,
-        type: networkState.type,
-        lastChecked: networkState.lastChecked
-      }
-    });
+    // Network state changes are handled by the network slice
   }, [networkState]);
 
   useEffect(() => {
@@ -168,62 +178,38 @@ export function OfflineTestRunner() {
   const clearLogs = async () => {
     setLogs([]);
     await AsyncStorage.removeItem(OFFLINE_LOGS_KEY);
-    console.clear();
-    logToConsole('Logs cleared', 'info');
+    // No need for console.clear() or additional logging
   };
 
-  const waitForNetworkState = async (targetState: 'offline' | 'online'): Promise<void> => {
-    const maxAttempts = 10; // 10 seconds timeout
-    let attempts = 0;
-
+  const waitForNetworkState = async (targetOnline: boolean, maxAttempts: number = 5): Promise<void> => {
     const getCurrentState = () => {
       const state = store.getState().network;
-      const isOnline = state.isConnected && state.isInternetReachable;
-      return { state, isOnline };
+      return {
+        isConnected: state.isConnected,
+        isInternetReachable: state.isInternetReachable,
+        isOnline: state.isConnected && state.isInternetReachable,
+        type: state.type
+      };
     };
 
-    const { state: initialState, isOnline: initialIsOnline } = getCurrentState();
-    console.log('[Network Wait] Starting wait for', targetState, {
-      currentState: {
-        isConnected: initialState.isConnected,
-        isInternetReachable: initialState.isInternetReachable,
-        type: initialState.type,
-        isOnline: initialIsOnline
-      }
-    });
-
+    let attempts = 0;
     while (attempts < maxAttempts) {
-      const { state: currentState, isOnline } = getCurrentState();
-      console.log('[Network Wait] Attempt', attempts + 1, {
-        target: targetState,
-        current: {
-          isConnected: currentState.isConnected,
-          isInternetReachable: currentState.isInternetReachable,
-          type: currentState.type,
-          isOnline
-        }
-      });
+      attempts++;
+      const currentState = getCurrentState();
       
-      if ((targetState === 'offline' && !isOnline) || (targetState === 'online' && isOnline)) {
-        console.log('[Network Wait] Target state reached:', targetState);
+      if (currentState.isOnline === targetOnline) {
         return;
       }
 
-      await wait(1000);
-      attempts++;
+      // Only log if we need to wait more
+      if (attempts < maxAttempts) {
+        const color = '\x1b[33m'; // Yellow for waiting
+        console.log(`${color}⏳ Waiting for network to be ${targetOnline ? 'online' : 'offline'}... (${attempts}/${maxAttempts})\x1b[0m`);
+        await wait(1000);
+      }
     }
 
-    const { state: finalState, isOnline: finalIsOnline } = getCurrentState();
-    console.log('[Network Wait] Timeout reached:', {
-      target: targetState,
-      finalState: {
-        isConnected: finalState.isConnected,
-        isInternetReachable: finalState.isInternetReachable,
-        type: finalState.type,
-        isOnline: finalIsOnline
-      }
-    });
-    throw new Error(`Timeout waiting for network to be ${targetState}`);
+    throw new Error(`Network state did not reach ${targetOnline ? 'online' : 'offline'} after ${maxAttempts} attempts`);
   };
 
   const setNetworkStateForTesting = async (isOnline: boolean) => {
@@ -235,10 +221,6 @@ export function OfflineTestRunner() {
         type: state.type
       };
     };
-
-    console.log('[Network Set] Starting state change to:', isOnline ? 'online' : 'offline', {
-      before: getCurrentState()
-    });
 
     // First, dispatch the network state change
     if (isOnline) {
@@ -275,29 +257,12 @@ export function OfflineTestRunner() {
     const currentState = store.getState().network;
     const actualIsOnline = currentState.isConnected && currentState.isInternetReachable;
 
-    console.log('[Network Set] After dispatch:', {
-      target: isOnline ? 'online' : 'offline',
-      current: getCurrentState()
-    });
-    
+    // Only log failures
     if (actualIsOnline !== isOnline) {
-      console.log('[Network Set] Failed to set state:', {
-        target: isOnline ? 'online' : 'offline',
-        current: {
-          ...getCurrentState(),
-          actualIsOnline
-        }
-      });
+      const color = '\x1b[31m'; // Red for errors
+      console.log(`${color}[✖] Failed to set network state to ${isOnline ? 'online' : 'offline'}\x1b[0m`);
       throw new Error(`Failed to set network state to ${isOnline ? 'online' : 'offline'}`);
     }
-
-    console.log('[Network Set] Successfully set state:', {
-      target: isOnline ? 'online' : 'offline',
-      current: {
-        ...getCurrentState(),
-        actualIsOnline
-      }
-    });
 
     // Wait a bit longer to ensure state propagation
     await wait(500);
@@ -418,7 +383,7 @@ export function OfflineTestRunner() {
 
       // Ensure we start with a clean state
       await setNetworkStateForTesting(true);
-      await waitForNetworkState('online');
+      await waitForNetworkState(true);
       await wait(2000); // Wait for any pending syncs
       
       await addLog('Starting comprehensive offline functionality tests...', 'info');
@@ -429,7 +394,7 @@ export function OfflineTestRunner() {
       
       try {
         await setNetworkStateForTesting(false);
-        await waitForNetworkState('offline');
+        await waitForNetworkState(false);
         await addLog('✓ Network is now offline', 'success');
         await logStorageState('Before Create List');
         await addLog('Attempting to create list...', 'info');
@@ -612,7 +577,7 @@ export function OfflineTestRunner() {
 
         try {
           await setNetworkStateForTesting(true);
-          await waitForNetworkState('online');
+          await waitForNetworkState(true);
           await addLog('Network switched to online', 'info');
           await wait(2000); // Wait for sync
           await logStorageState('Before Online Create');
@@ -631,7 +596,7 @@ export function OfflineTestRunner() {
           await logStorageState('After Sync');
 
           await setNetworkStateForTesting(false);
-          await waitForNetworkState('offline');
+          await waitForNetworkState(false);
           await addLog('Network switched to offline', 'info');
 
           // Multiple offline updates to online-created list
@@ -665,7 +630,7 @@ export function OfflineTestRunner() {
         try {
           // Create a list for conflict testing
           await setNetworkStateForTesting(true);
-          await waitForNetworkState('online');
+          await waitForNetworkState(true);
           await addLog('Network switched to online', 'info');
 
           const conflictList = await dispatch(createList({ 
@@ -678,7 +643,7 @@ export function OfflineTestRunner() {
 
           // Go offline and make changes
           await setNetworkStateForTesting(false);
-          await waitForNetworkState('offline');
+          await waitForNetworkState(false);
           await addLog('Network switched to offline', 'info');
 
           // Make offline changes
@@ -700,7 +665,7 @@ export function OfflineTestRunner() {
 
           // Go back online to trigger conflict
           await setNetworkStateForTesting(true);
-          await waitForNetworkState('online');
+          await waitForNetworkState(true);
           await wait(2000); // Wait for sync
 
           await addLog('✓ Conflict resolution test completed', 'success');
@@ -724,7 +689,7 @@ export function OfflineTestRunner() {
           // Sequence of rapid network changes
           for (let i = 0; i < 3; i++) {
             await setNetworkStateForTesting(false);
-            await waitForNetworkState('offline');
+            await waitForNetworkState(false);
             await addLog('Network switched to offline', 'info');
 
             // Make offline change
@@ -737,7 +702,7 @@ export function OfflineTestRunner() {
             await wait(500); // Brief wait
 
             await setNetworkStateForTesting(true);
-            await waitForNetworkState('online');
+            await waitForNetworkState(true);
             await addLog('Network switched to online', 'info');
             await wait(1000); // Wait for sync
           }
@@ -810,7 +775,7 @@ export function OfflineTestRunner() {
       setIsRunning(false);
       // Ensure we're online for cleanup
       await setNetworkStateForTesting(true);
-      await waitForNetworkState('online');
+      await waitForNetworkState(true);
       await wait(2000); // Wait for sync
       await cleanupAllTestData();
       await resetNetworkState();

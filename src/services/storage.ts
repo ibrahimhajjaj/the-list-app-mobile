@@ -3,84 +3,32 @@ import { databaseService } from './database';
 import { Settings } from '../types/settings';
 
 export const storage = {
+  // Retrieves all lists from storage
   async getLists(): Promise<any[]> {
     try {
       const listsJson = await AsyncStorage.getItem('lists');
-      const lists = listsJson ? JSON.parse(listsJson) : [];
-      
-      console.log('[Storage] Retrieved lists:', {
-        count: lists.length,
-        tempCount: lists.filter((l: any) => l._id?.startsWith('temp_')).length,
-        duplicates: this.findDuplicates(lists)
-      });
-      
-      return lists;
+      return listsJson ? JSON.parse(listsJson) : [];
     } catch (error) {
       console.error('[Storage] Error retrieving lists:', error);
       return [];
     }
   },
 
+  // Saves lists to storage, handling duplicates and merging with existing lists
   async saveLists(lists: any[]): Promise<void> {
-    console.log('[Storage] Saving lists:', {
-      count: lists.length,
-      ids: lists.map(l => ({ 
-        id: l._id,
-        title: l.title,
-        isTemp: l._id?.startsWith('temp_')
-      }))
-    });
-
     const existingLists = await this.getLists();
-    console.log('[Storage] Existing lists:', {
-      count: existingLists.length,
-      tempCount: existingLists.filter(l => l._id?.startsWith('temp_')).length,
-      duplicates: this.findDuplicates(existingLists)
-    });
-
-    // Merge lists, preferring new versions over old ones
     const mergedLists = this.mergeLists(existingLists, lists);
-    
-    console.log('[Storage] After merge:', {
-      count: mergedLists.length,
-      tempCount: mergedLists.filter(l => l._id?.startsWith('temp_')).length,
-      duplicates: this.findDuplicates(mergedLists),
-      listSummary: mergedLists.map(l => ({
-        id: l._id,
-        title: l.title,
-        isTemp: l._id?.startsWith('temp_')
-      }))
-    });
-
     await AsyncStorage.setItem('lists', JSON.stringify(mergedLists));
   },
 
+  // Helper function to find duplicate lists by ID
   findDuplicates(lists: any[]): { [key: string]: number } {
     const counts: { [key: string]: number } = {};
-    const details: { [key: string]: { count: number, titles: string[] } } = {};
-    
     lists.forEach(list => {
       if (list._id) {
         counts[list._id] = (counts[list._id] || 0) + 1;
-        if (!details[list._id]) {
-          details[list._id] = { count: 0, titles: [] };
-        }
-        details[list._id].count++;
-        details[list._id].titles.push(list.title);
       }
     });
-
-    // Log detailed duplicate information
-    Object.entries(details)
-      .filter(([_, info]) => info.count > 1)
-      .forEach(([id, info]) => {
-        console.log('[Storage] Duplicate list details:', {
-          id: id,
-          count: info.count,
-          titles: info.titles,
-          fullId: id
-        });
-      });
     
     return Object.fromEntries(
       Object.entries(counts)
@@ -89,41 +37,20 @@ export const storage = {
     );
   },
 
+  // Merges old and new lists, preferring newer versions
   mergeLists(oldLists: any[], newLists: any[]): any[] {
-    // Create a map of existing lists by ID
     const listMap = new Map(oldLists.map(list => [list._id, list]));
     
-    // Track potential duplicates
-    const duplicateTracker = new Set<string>();
-    const seenIds = new Set<string>();
-    
-    // Update or add new lists
     newLists.forEach(newList => {
       if (newList._id) {
-        if (seenIds.has(newList._id)) {
-          duplicateTracker.add(newList._id);
-          console.log('[Storage] Duplicate detected:', {
-            id: newList._id,
-            title: newList.title,
-            existingTitle: listMap.get(newList._id)?.title
-          });
-        }
-        seenIds.add(newList._id);
         listMap.set(newList._id, newList);
       }
     });
-
-    // Log duplicate summary if any found
-    if (duplicateTracker.size > 0) {
-      console.log('[Storage] Duplicate summary:', {
-        count: duplicateTracker.size,
-        ids: Array.from(duplicateTracker)
-      });
-    }
     
     return Array.from(listMap.values());
   },
 
+  // Shared lists operations
   async getSharedLists() {
     try {
       return await databaseService.getSharedLists();
@@ -137,16 +64,16 @@ export const storage = {
     try {
       await databaseService.saveSharedLists(lists);
     } catch (error) {
-      console.error('Error saving shared lists to storage:', error);
+      throw error;
     }
   },
 
+  // Auth operations
   async getAuthToken() {
     try {
       const authData = await databaseService.getAuthData();
       return authData.token;
     } catch (error) {
-      console.error('Error reading auth token from storage:', error);
       return null;
     }
   },
@@ -155,9 +82,8 @@ export const storage = {
     try {
       const currentData = await databaseService.getAuthData();
       await databaseService.saveAuthData(token, currentData?.userData || null);
-      console.log('[Storage] Auth token saved:', token ? 'token present' : 'token cleared');
     } catch (error) {
-      console.error('Error saving auth token to storage:', error);
+      throw error;
     }
   },
 
@@ -166,7 +92,6 @@ export const storage = {
       const authData = await databaseService.getAuthData();
       return authData.userData;
     } catch (error) {
-      console.error('Error reading user data from storage:', error);
       return null;
     }
   },
@@ -175,12 +100,12 @@ export const storage = {
     try {
       const currentData = await databaseService.getAuthData();
       await databaseService.saveAuthData(currentData?.token || null, userData);
-      console.log('[Storage] User data saved:', userData ? 'data present' : 'data cleared');
     } catch (error) {
-      console.error('Error saving user data to storage:', error);
+      throw error;
     }
   },
 
+  // Settings operations
   async getSettings(): Promise<Settings | null> {
     try {
       return await databaseService.getSettings();
@@ -193,13 +118,13 @@ export const storage = {
   async saveSettings(settings: Partial<Settings>) {
     try {
       await databaseService.saveSettings(settings as Settings);
-      console.log('[Storage] Settings saved successfully:', settings);
     } catch (error) {
       console.error('[Storage] Error saving settings:', error);
       throw error; // Propagate error to allow proper error handling in components
     }
   },
 
+  // Selected list operations
   async saveSelectedList(listId: string | null) {
     try {
       await databaseService.saveSelectedList(listId);
@@ -217,34 +142,30 @@ export const storage = {
     }
   },
 
+  // Data management operations
   async clearAll() {
     try {
       await databaseService.clearAllData();
-      console.log('[Storage] All data cleared successfully');
     } catch (error) {
       console.error('Error clearing storage:', error);
     }
   },
 
+  // Resets local database while preserving authentication data
   async resetLocalDBExceptAuth() {
     try {
-      // Save current auth data
       const authToken = await this.getAuthToken();
       const userData = await this.getUserData();
       
-	  await databaseService.clearAllData();
-      // Clear all data
+      await databaseService.clearAllData();
       await AsyncStorage.clear();
       
-      // Restore auth data if it existed
       if (authToken) {
         await this.saveAuthToken(authToken);
       }
       if (userData) {
         await this.saveUserData(userData);
       }
-      
-      console.log('[Storage] Local DB reset completed (auth data preserved)');
     } catch (error) {
       console.error('[Storage] Error resetting local DB:', error);
       throw error;

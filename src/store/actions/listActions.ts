@@ -52,22 +52,11 @@ export const createList = createAsyncThunk(
   'lists/createList',
   async (data: Partial<List>, { rejectWithValue }) => {
     try {
-      // Check network state from Redux store
       const state = store.getState();
       const isConnected = state.network.isConnected && state.network.isInternetReachable;
-
       const tempId = generateTempId();
-      console.log('[ListActions Debug] Creating list:', {
-        tempId,
-        isConnected,
-        networkState: {
-          isConnected: state.network.isConnected,
-          isInternetReachable: state.network.isInternetReachable,
-          type: state.network.type
-        }
-      });
 
-      // Ensure all required properties are initialized
+      // Create a temporary list while we wait for server response or handle offline state
       const tempList: List = {
         _id: tempId,
         title: data.title || 'Untitled List',
@@ -82,78 +71,28 @@ export const createList = createAsyncThunk(
         localVersion: 0
       };
 
-      console.log('[ListActions Debug] Initialized temp list:', {
-        id: tempId.substring(0, 8),
-        properties: Object.keys(tempList),
-        hasSharedWith: Array.isArray(tempList.sharedWith),
-        hasItems: Array.isArray(tempList.items)
-      });
-
-      // Save to local storage first
       const storedLists = await storage.getLists() || [];
-      console.log('[ListActions Debug] Storage state before save:', {
-        totalLists: storedLists.length,
-        tempLists: storedLists.filter(l => l._id?.startsWith('temp_')).length,
-        tempIds: storedLists
-          .filter(l => l._id?.startsWith('temp_'))
-          .map(l => ({ id: l._id.substring(0, 8), title: l.title }))
-      });
-
       await storage.saveLists([...storedLists, tempList]);
 
+      // Handle offline creation
       if (!isConnected) {
-        console.log('[ListActions Debug] Adding offline change:', {
-          type: 'CREATE_LIST',
-          tempId: tempId,
-          displayId: tempId.substring(0, 8),
-          data: Object.keys(data)
-        });
-        
         await syncService.addPendingChange('CREATE_LIST', tempId, data);
         return tempList;
       }
 
-      // If online, create on server
+      // Create on server and update local storage with server response
       const response = await api.post('/lists', data);
       const newList = response.data;
-      console.log('[ListActions Debug] Server response:', {
-        tempId,
-        actualId: newList._id,
-        title: newList.title,
-        version: newList.version,
-        hasSharedWith: Array.isArray(newList.sharedWith),
-        hasItems: Array.isArray(newList.items),
-        idMapping: { from: tempId, to: newList._id }
-      });
-
-      // Update local storage with server response
+      
       const currentLists = await storage.getLists() || [];
       const updatedLists = currentLists.map(list => 
         list._id === tempId ? { ...newList, _id: newList._id } : list
       );
       await storage.saveLists(updatedLists);
-
-      // Save ID mapping to database with full IDs
       await databaseService.saveIdMapping(tempId, newList._id, 'completed');
-
-      console.log('[ListActions Debug] Storage state after save:', {
-        tempLists: updatedLists.filter(l => l._id?.startsWith('temp_')).length,
-        totalLists: updatedLists.length,
-        tempIds: updatedLists
-          .filter(l => l._id?.startsWith('temp_'))
-          .map(l => ({ 
-            id: l._id,
-            title: l.title,
-            displayId: l._id.substring(0, 8)
-          }))
-      });
 
       return newList;
     } catch (error: any) {
-      console.error('[ListActions Debug] Create failed:', {
-        error: error.message,
-        response: error.response?.data
-      });
       return rejectWithValue(error.response?.data?.message || 'Failed to create list');
     }
   }
@@ -167,10 +106,6 @@ function validateListUpdates(data: Partial<List>): AllowedListUpdates {
   if ('items' in data) allowedUpdates.items = data.items;
   if ('category' in data) allowedUpdates.category = data.category;
 
-  console.log('[ListActions Debug] Preparing update:', {
-    fields: Object.keys(allowedUpdates)
-  });
-
   return allowedUpdates;
 }
 
@@ -178,11 +113,10 @@ export const updateList = createAsyncThunk(
   'lists/updateList',
   async ({ listId, data }: { listId: string, data: Partial<List> }, { rejectWithValue }) => {
     try {
-      // Check network state from Redux store
       const state = store.getState();
       const isConnected = state.network.isConnected && state.network.isInternetReachable;
 
-      // Update local storage first
+      // Update local storage first for immediate UI feedback
       const storedLists = await storage.getLists() || [];
       const targetList = storedLists.find(list => list._id === listId);
 
@@ -192,14 +126,6 @@ export const updateList = createAsyncThunk(
 
       // Validate and filter updates
       const validatedUpdates = validateListUpdates(data);
-      
-      console.log('[ListActions Debug] Updating list:', {
-        listId: listId.substring(0, 8),
-        changes: Object.keys(validatedUpdates),
-        currentVersion: targetList.__v
-      });
-
-      // Update only allowed fields in local storage
       const updatedList = {
         ...targetList,
         ...validatedUpdates,
@@ -211,63 +137,37 @@ export const updateList = createAsyncThunk(
       );
       await storage.saveLists(updatedLists);
 
+      // Handle offline updates
       if (!isConnected) {
-        console.log('[ListActions Debug] Adding offline update:', {
-          changes: Object.keys(validatedUpdates),
-          isTemp: listId.startsWith('temp_'),
-          listId: listId
-        });
-        
         await syncService.addPendingChange('UPDATE_LIST', listId, validatedUpdates);
         return updatedList;
       }
 
       try {
-        // If online, update on server with only allowed fields
+        // Send update to server and handle potential conflicts
         const response = await api.patch(`/lists/${listId}`, validatedUpdates);
         const serverUpdatedList = response.data;
         
-        console.log('[ListActions Debug] Server response:', {
-          listId: listId.substring(0, 8),
-          actualId: serverUpdatedList._id.substring(0, 8),
-          newVersion: serverUpdatedList.__v,
-          title: serverUpdatedList.title,
-          sentFields: Object.keys(validatedUpdates)
-        });
-
         // Update local storage with server response
-        const finalLists = storedLists.map(list =>
+		const finalLists = storedLists.map(list =>
           list._id === listId ? serverUpdatedList : list
         );
         await storage.saveLists(finalLists);
 
         return serverUpdatedList;
       } catch (error: any) {
-        // Handle version conflict
+        // Handle version conflicts by merging changes
         if (error.response?.status === 409) {
-          console.log('[ListActions Debug] Version conflict detected:', {
-            serverVersion: error.response.data.serverData.__v,
-            serverData: error.response.data.serverData,
-            conflictType: error.response.data.conflictType
-          });
-
-          // Use conflict resolution service to resolve the conflict
           const resolvedList = await syncService.handleConflict(
             listId,
             error.response.data.serverData,
             error.response.data.conflictType
           );
-
           return resolvedList;
         }
         throw error;
       }
     } catch (error: any) {
-      console.error('[ListActions Debug] Update failed:', {
-        listId: listId.substring(0, 8),
-        error: error.message,
-        response: error.response?.data
-      });
       return rejectWithValue(error.response?.data?.message || 'Failed to update list');
     }
   }
@@ -277,25 +177,11 @@ export const deleteList = createAsyncThunk(
   'lists/deleteList',
   async (listId: string, { rejectWithValue }) => {
     try {
-      console.log('[ListActions] Deleting list:', {
-        listId,
-        fullListId: listId,
-        isTemp: listId.startsWith('temp_')
-      });
-
-      // Check network state from Redux store
       const state = store.getState();
       const isConnected = state.network.isConnected && state.network.isInternetReachable;
 
-      // Remove from local storage first
+      // Remove from local storage first for immediate UI feedback
       const storedLists = await storage.getLists() || [];
-      console.log('[ListActions] Current storage state:', {
-        totalLists: storedLists.length,
-        tempLists: storedLists.filter(l => l._id?.startsWith('temp_')).length,
-        targetList: storedLists.find(l => l._id === listId)
-      });
-
-      // Remove the list and any duplicates with the same ID
       const updatedLists = storedLists.filter(list => list._id !== listId);
       await storage.saveLists(updatedLists);
 
@@ -307,17 +193,8 @@ export const deleteList = createAsyncThunk(
 
       // If online, delete from server
       await api.delete(`/lists/${listId}`);
-      console.log('[ListActions] List deleted from server:', {
-        listId,
-        fullListId: listId
-      });
-
       return listId;
     } catch (error: any) {
-      console.error('[ListActions] Delete failed:', {
-        listId: listId.substring(0, 8),
-        error: error.message
-      });
       return rejectWithValue(error.response?.data?.message || 'Failed to delete list');
     }
   }
