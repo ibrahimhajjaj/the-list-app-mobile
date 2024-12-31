@@ -1,6 +1,9 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { authService } from '../../services/auth';
 import { userService } from '../../services/user';
+import type { store } from '../index';
+
+type AppState = ReturnType<typeof store.getState>;
 
 interface User {
   _id: string;
@@ -19,6 +22,7 @@ interface AuthState {
     details?: any;
   } | null;
   isAuthenticated: boolean;
+  isOffline: boolean;
 }
 
 const initialState: AuthState = {
@@ -27,7 +31,8 @@ const initialState: AuthState = {
   loading: false,
   error: null,
   lastAttempt: null,
-  isAuthenticated: false
+  isAuthenticated: false,
+  isOffline: false
 };
 
 // Async thunks
@@ -67,17 +72,32 @@ export const registerUser = createAsyncThunk(
 
 export const loadUser = createAsyncThunk(
   'auth/loadUser',
-  async (_, { rejectWithValue }) => {
+  async (_, { rejectWithValue, getState }) => {
     try {
-      const result = await authService.validateSession();
+      // Get network status from Redux store
+      const state = getState() as AppState;
+      const networkState = state.network;
+      const isOnline = networkState.isConnected && networkState.isInternetReachable === true;
+
+      const result = await authService.validateSession(isOnline);
       
       if (!result.user || !result.token) {
         throw new Error('Invalid session data');
       }
 
-      return result;
+      return {
+        ...result,
+        isOffline: !isOnline
+      };
     } catch (error: any) {
-      return rejectWithValue(error.message);
+      // Get current network state from Redux
+      const state = getState() as AppState;
+      const networkState = state.network;
+      const isOffline = !networkState.isConnected || networkState.isInternetReachable !== true;
+      return rejectWithValue({
+        message: error.message,
+        isOffline
+      });
     }
   }
 );
@@ -104,11 +124,15 @@ const authSlice = createSlice({
       state.error = null;
       state.loading = false;
       state.isAuthenticated = false;
+      state.isOffline = false;
       authService.logout();
     },
     clearError: (state) => {
       state.error = null;
     },
+    setOfflineState: (state, action) => {
+      state.isOffline = action.payload;
+    }
   },
   extraReducers: (builder) => {
     builder
@@ -123,6 +147,7 @@ const authSlice = createSlice({
         state.token = action.payload.token;
         state.error = null;
         state.isAuthenticated = true;
+        state.isOffline = false;
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.loading = false;
@@ -145,6 +170,7 @@ const authSlice = createSlice({
         state.token = action.payload.token;
         state.error = null;
         state.isAuthenticated = true;
+        state.isOffline = false;
         state.lastAttempt = {
           action: 'register',
           timestamp: Date.now(),
@@ -173,27 +199,25 @@ const authSlice = createSlice({
         state.error = null;
       })
       .addCase(loadUser.fulfilled, (state, action) => {
-        if (!action.payload.user || !action.payload.token) {
-          state.loading = false;
-          state.error = 'Invalid session data';
-          state.user = null;
-          state.token = null;
-          state.isAuthenticated = false;
-          return;
-        }
-
         state.loading = false;
         state.user = action.payload.user;
         state.token = action.payload.token;
         state.error = null;
         state.isAuthenticated = true;
+        state.isOffline = action.payload.isOffline;
       })
       .addCase(loadUser.rejected, (state, action) => {
         state.loading = false;
-        state.error = action.payload as string;
-        state.user = null;
-        state.token = null;
-        state.isAuthenticated = false;
+        const payload = action.payload as any;
+        state.error = payload?.message;
+        state.isOffline = payload?.isOffline;
+        
+        // Only clear auth state if we're online and got an error
+        if (!state.isOffline) {
+          state.user = null;
+          state.token = null;
+          state.isAuthenticated = false;
+        }
       })
       // Update User
       .addCase(updateUser.pending, (state) => {
@@ -212,5 +236,5 @@ const authSlice = createSlice({
   },
 });
 
-export const { logout, clearError } = authSlice.actions;
+export const { logout, clearError, setOfflineState } = authSlice.actions;
 export default authSlice.reducer; 

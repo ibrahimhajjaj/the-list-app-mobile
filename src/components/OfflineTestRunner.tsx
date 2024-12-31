@@ -3,8 +3,8 @@ import { View, TouchableOpacity, Text, StyleSheet, ScrollView, Modal } from 'rea
 import { theme } from '../constants/theme';
 import { useThemeColors } from '../constants/theme';
 import { useAppDispatch, useAppSelector } from '../hooks/redux';
-import { createList, updateList, deleteList, fetchLists } from '../store/actions/listActions';
-import { setNetworkState, resetNetworkState } from '../store/slices/networkSlice';
+import { createList, updateList, fetchLists } from '../store/actions/listActions';
+import { setNetworkState } from '../store/slices/networkSlice';
 import { storage } from '../services/storage';
 import { databaseService } from '../services/database';
 import { ClipboardCheck } from 'lucide-react-native';

@@ -42,7 +42,8 @@ class SocketService {
 
   private async validateToken(token: string): Promise<boolean> {
     try {
-      await authService.validateSession();
+      const isOnline = store.getState().network.isConnected && store.getState().network.isInternetReachable === true;
+      await authService.validateSession(isOnline);
       return true;
     } catch (error) {
       console.error('[SocketService] Token validation failed:', error);
