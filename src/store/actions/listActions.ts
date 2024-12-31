@@ -11,6 +11,12 @@ import {
   UpdateListItemPayload 
 } from '../types/listActionTypes';
 
+function generateTempId(): string {
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).substring(2, 15);
+  return `temp_${timestamp}_${random}`;
+}
+
 export const fetchLists = createAsyncThunk(
   'lists/fetchLists',
   async (_, { rejectWithValue }) => {
@@ -50,22 +56,59 @@ export const createList = createAsyncThunk(
       const state = store.getState();
       const isConnected = state.network.isConnected && state.network.isInternetReachable;
 
-      const tempId = `temp_${Date.now()}`;
-      const tempList = {
+      const tempId = generateTempId();
+      console.log('[ListActions Debug] Creating list:', {
+        tempId,
+        isConnected,
+        networkState: {
+          isConnected: state.network.isConnected,
+          isInternetReachable: state.network.isInternetReachable,
+          type: state.network.type
+        }
+      });
+
+      // Ensure all required properties are initialized
+      const tempList: List = {
         _id: tempId,
-        ...data,
-        items: [],
-        sharedWith: [],
+        title: data.title || 'Untitled List',
+        items: data.items || [],
+        sharedWith: data.sharedWith || [],
+        owner: data.owner || '',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
+        isTemp: true,
+        pendingSync: !isConnected,
+        version: 0,
+        localVersion: 0
       };
+
+      console.log('[ListActions Debug] Initialized temp list:', {
+        id: tempId.substring(0, 8),
+        properties: Object.keys(tempList),
+        hasSharedWith: Array.isArray(tempList.sharedWith),
+        hasItems: Array.isArray(tempList.items)
+      });
 
       // Save to local storage first
       const storedLists = await storage.getLists() || [];
+      console.log('[ListActions Debug] Storage state before save:', {
+        totalLists: storedLists.length,
+        tempLists: storedLists.filter(l => l._id?.startsWith('temp_')).length,
+        tempIds: storedLists
+          .filter(l => l._id?.startsWith('temp_'))
+          .map(l => ({ id: l._id.substring(0, 8), title: l.title }))
+      });
+
       await storage.saveLists([...storedLists, tempList]);
 
       if (!isConnected) {
-        // Queue for sync when online
+        console.log('[ListActions Debug] Adding offline change:', {
+          type: 'CREATE_LIST',
+          tempId: tempId,
+          displayId: tempId.substring(0, 8),
+          data: Object.keys(data)
+        });
+        
         await syncService.addPendingChange('CREATE_LIST', tempId, data);
         return tempList;
       }
@@ -73,15 +116,44 @@ export const createList = createAsyncThunk(
       // If online, create on server
       const response = await api.post('/lists', data);
       const newList = response.data;
+      console.log('[ListActions Debug] Server response:', {
+        tempId,
+        actualId: newList._id,
+        title: newList.title,
+        version: newList.version,
+        hasSharedWith: Array.isArray(newList.sharedWith),
+        hasItems: Array.isArray(newList.items),
+        idMapping: { from: tempId, to: newList._id }
+      });
 
       // Update local storage with server response
-      const updatedLists = storedLists.map(list => 
-        list._id === tempId ? newList : list
+      const currentLists = await storage.getLists() || [];
+      const updatedLists = currentLists.map(list => 
+        list._id === tempId ? { ...newList, _id: newList._id } : list
       );
       await storage.saveLists(updatedLists);
 
+      // Save ID mapping to database with full IDs
+      await databaseService.saveIdMapping(tempId, newList._id, 'completed');
+
+      console.log('[ListActions Debug] Storage state after save:', {
+        tempLists: updatedLists.filter(l => l._id?.startsWith('temp_')).length,
+        totalLists: updatedLists.length,
+        tempIds: updatedLists
+          .filter(l => l._id?.startsWith('temp_'))
+          .map(l => ({ 
+            id: l._id,
+            title: l.title,
+            displayId: l._id.substring(0, 8)
+          }))
+      });
+
       return newList;
     } catch (error: any) {
+      console.error('[ListActions Debug] Create failed:', {
+        error: error.message,
+        response: error.response?.data
+      });
       return rejectWithValue(error.response?.data?.message || 'Failed to create list');
     }
   }
@@ -91,35 +163,113 @@ export const updateList = createAsyncThunk(
   'lists/updateList',
   async ({ listId, data }: { listId: string, data: Partial<List> }, { rejectWithValue }) => {
     try {
+      console.log('[ListActions Debug] Updating list:', {
+        listId: listId,
+        displayId: listId.substring(0, 8),
+        changes: Object.keys(data),
+        isTemp: listId.startsWith('temp_')
+      });
+
       // Check network state from Redux store
       const state = store.getState();
       const isConnected = state.network.isConnected && state.network.isInternetReachable;
 
       // Update local storage first
       const storedLists = await storage.getLists() || [];
+
+      console.log('[ListActions Debug] Looking up list:', {
+        listId,
+        fullListId: listId,
+        isTemp: listId.startsWith('temp_'),
+        totalLists: storedLists.length,
+        tempLists: storedLists.filter(l => l._id?.startsWith('temp_')).length,
+        listSummary: storedLists.map(l => ({
+          id: l._id,
+          title: l.title,
+          isTemp: l._id?.startsWith('temp_')
+        }))
+      });
+      
+      const targetList = storedLists.find(list => list._id === listId);
+      
+      console.log('[ListActions Debug] Current list state:', {
+        listId,
+        fullListId: listId,
+        found: !!targetList,
+        currentTitle: targetList?.title,
+        isTemp: targetList?._id?.startsWith('temp_'),
+        version: targetList?.version,
+        idMapping: targetList?.isTemp ? await databaseService.getIdMapping(listId) : null
+      });
+
+      if (!targetList) {
+        const isTestId = listId.startsWith('invalid_') || listId.startsWith('test_');
+        const logLevel = isTestId ? 'debug' : 'error';
+        console[logLevel](`[ListActions ${isTestId ? 'Test' : 'Error'}] List not found:`, {
+          listId,
+          fullListId: listId,
+          totalLists: storedLists.length,
+          availableIds: storedLists.map(l => l._id),
+          listDetails: storedLists.map(l => ({
+            id: l._id,
+            title: l.title,
+            isTemp: l._id?.startsWith('temp_'),
+            version: l.version
+          })),
+          idMapping: await databaseService.getIdMapping(listId)
+        });
+        return rejectWithValue('List not found in storage');
+      }
+
+      // Ensure we have all required properties with defaults
+      const updatedList = {
+        ...targetList,
+        ...data,
+        items: targetList.items || [],
+        sharedWith: targetList.sharedWith || [],
+        updatedAt: new Date().toISOString()
+      };
+
       const updatedLists = storedLists.map(list =>
-        list._id === listId ? { ...list, ...data, updatedAt: new Date().toISOString() } : list
+        list._id === listId ? updatedList : list
       );
       await storage.saveLists(updatedLists);
 
       if (!isConnected) {
-        // Queue for sync when online
+        console.log('[ListActions Debug] Adding offline update:', {
+          changes: Object.keys(data),
+          isTemp: listId.startsWith('temp_'),
+          listId: listId
+        });
+        
         await syncService.addPendingChange('UPDATE_LIST', listId, data);
-        return updatedLists.find(list => list._id === listId);
+        return updatedList;
       }
 
       // If online, update on server
       const response = await api.put(`/lists/${listId}`, data);
-      const updatedList = response.data;
+      const serverUpdatedList = response.data;
+      
+      console.log('[ListActions Debug] Server response:', {
+        listId: listId.substring(0, 8),
+        actualId: serverUpdatedList._id.substring(0, 8),
+        newVersion: serverUpdatedList.__v,
+        title: serverUpdatedList.title
+      });
 
       // Update local storage with server response
       const finalLists = storedLists.map(list =>
-        list._id === listId ? updatedList : list
+        list._id === listId ? serverUpdatedList : list
       );
       await storage.saveLists(finalLists);
 
-      return updatedList;
+      return serverUpdatedList;
     } catch (error: any) {
+      console.error('[ListActions Debug] Update failed:', {
+        listId: listId.substring(0, 8),
+        error: error.message,
+        response: error.response?.data
+      });
       return rejectWithValue(error.response?.data?.message || 'Failed to update list');
     }
   }
@@ -129,12 +279,25 @@ export const deleteList = createAsyncThunk(
   'lists/deleteList',
   async (listId: string, { rejectWithValue }) => {
     try {
+      console.log('[ListActions] Deleting list:', {
+        listId,
+        fullListId: listId,
+        isTemp: listId.startsWith('temp_')
+      });
+
       // Check network state from Redux store
       const state = store.getState();
       const isConnected = state.network.isConnected && state.network.isInternetReachable;
 
       // Remove from local storage first
       const storedLists = await storage.getLists() || [];
+      console.log('[ListActions] Current storage state:', {
+        totalLists: storedLists.length,
+        tempLists: storedLists.filter(l => l._id?.startsWith('temp_')).length,
+        targetList: storedLists.find(l => l._id === listId)
+      });
+
+      // Remove the list and any duplicates with the same ID
       const updatedLists = storedLists.filter(list => list._id !== listId);
       await storage.saveLists(updatedLists);
 
@@ -146,8 +309,17 @@ export const deleteList = createAsyncThunk(
 
       // If online, delete from server
       await api.delete(`/lists/${listId}`);
+      console.log('[ListActions] List deleted from server:', {
+        listId,
+        fullListId: listId
+      });
+
       return listId;
     } catch (error: any) {
+      console.error('[ListActions] Delete failed:', {
+        listId: listId.substring(0, 8),
+        error: error.message
+      });
       return rejectWithValue(error.response?.data?.message || 'Failed to delete list');
     }
   }

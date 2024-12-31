@@ -50,6 +50,15 @@ class DatabaseService {
         base_version INTEGER DEFAULT 1
       );
 
+      CREATE TABLE IF NOT EXISTS id_mappings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        temp_id TEXT NOT NULL,
+        actual_id TEXT NOT NULL,
+        status TEXT DEFAULT 'pending',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+
       -- Create indices for frequently queried columns
       CREATE INDEX IF NOT EXISTS idx_lists_is_shared ON lists(is_shared);
       CREATE INDEX IF NOT EXISTS idx_lists_last_updated ON lists(last_updated);
@@ -58,6 +67,9 @@ class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_pending_changes_status ON pending_changes(status);
       CREATE INDEX IF NOT EXISTS idx_pending_changes_entity_id ON pending_changes(entity_id);
       CREATE INDEX IF NOT EXISTS idx_settings_key ON settings(key);
+      CREATE INDEX IF NOT EXISTS idx_id_mappings_temp_id ON id_mappings(temp_id);
+      CREATE INDEX IF NOT EXISTS idx_id_mappings_actual_id ON id_mappings(actual_id);
+      CREATE INDEX IF NOT EXISTS idx_id_mappings_status ON id_mappings(status);
     `);
   }
 
@@ -231,15 +243,40 @@ class DatabaseService {
 
   // Pending changes operations
   async addPendingChange(actionType: string, entityId: string, data: any): Promise<void> {
+    console.log('[Database Debug] Adding pending change:', {
+      type: actionType,
+      entityId: entityId.substring(0, 8),
+      dataKeys: Object.keys(data),
+      timestamp: Date.now()
+    });
+
     const currentList = await db.getFirstAsync<{ version: number }>(
       'SELECT version FROM lists WHERE id = ?',
       [entityId]
     );
 
+    console.log('[Database Debug] Current list state:', {
+      entityId: entityId.substring(0, 8),
+      found: !!currentList,
+      version: currentList?.version
+    });
+
     await db.runAsync(
       'INSERT INTO pending_changes (action_type, entity_id, data, timestamp, base_version) VALUES (?, ?, ?, ?, ?)',
       [actionType, entityId, JSON.stringify(data), Date.now(), currentList?.version || 1]
     );
+
+    // Verify the change was added
+    const addedChange = await db.getFirstAsync<{ id: number }>(
+      'SELECT id FROM pending_changes WHERE entity_id = ? AND action_type = ? ORDER BY id DESC LIMIT 1',
+      [entityId, actionType]
+    );
+
+    console.log('[Database Debug] Pending change added:', {
+      success: !!addedChange,
+      changeId: addedChange?.id,
+      entityId: entityId.substring(0, 8)
+    });
   }
 
   async getPendingChanges(): Promise<Array<{
@@ -251,6 +288,8 @@ class DatabaseService {
     retries: number;
     status: string;
   }>> {
+    console.log('[Database Debug] Fetching pending changes');
+
     interface PendingChangeRow {
       id: number;
       action_type: string;
@@ -259,12 +298,30 @@ class DatabaseService {
       timestamp: number;
       retries: number;
       status: string;
+      base_version: number;
     }
 
     const results = await db.getAllAsync<PendingChangeRow>(
       'SELECT * FROM pending_changes WHERE status = ? ORDER BY timestamp ASC',
       ['pending']
     );
+
+    // Group changes by entity for better debugging
+    const changesByEntity = new Map<string, PendingChangeRow[]>();
+    results.forEach(row => {
+      const existing = changesByEntity.get(row.entity_id) || [];
+      changesByEntity.set(row.entity_id, [...existing, row]);
+    });
+
+    console.log('[Database Debug] Pending changes summary:', {
+      total: results.length,
+      byEntity: Array.from(changesByEntity.entries()).map(([entityId, changes]) => ({
+        entityId: entityId.substring(0, 8),
+        count: changes.length,
+        types: changes.map(c => c.action_type),
+        versions: changes.map(c => c.base_version)
+      }))
+    });
 
     return results.map(row => ({
       id: row.id,
@@ -278,6 +335,12 @@ class DatabaseService {
   }
 
   async updatePendingChangeStatus(id: number, status: string, retries?: number): Promise<void> {
+    console.log('[Database Debug] Updating change status:', {
+      changeId: id,
+      newStatus: status,
+      retries
+    });
+
     if (retries !== undefined) {
       await db.runAsync(
         'UPDATE pending_changes SET status = ?, retries = ? WHERE id = ?',
@@ -289,10 +352,44 @@ class DatabaseService {
         [status, id]
       );
     }
+
+    // Verify the update
+    const updatedChange = await db.getFirstAsync<{ status: string, retries: number }>(
+      'SELECT status, retries FROM pending_changes WHERE id = ?',
+      [id]
+    );
+
+    console.log('[Database Debug] Change status updated:', {
+      changeId: id,
+      success: updatedChange?.status === status,
+      currentStatus: updatedChange?.status,
+      retries: updatedChange?.retries
+    });
   }
 
   async removePendingChange(id: number): Promise<void> {
+    console.log('[Database Debug] Removing pending change:', { changeId: id });
+
+    // Get change details before removal
+    const change = await db.getFirstAsync<{ entity_id: string, action_type: string }>(
+      'SELECT entity_id, action_type FROM pending_changes WHERE id = ?',
+      [id]
+    );
+
     await db.runAsync('DELETE FROM pending_changes WHERE id = ?', [id]);
+
+    // Verify removal
+    const remainingChange = await db.getFirstAsync<{ id: number }>(
+      'SELECT id FROM pending_changes WHERE id = ?',
+      [id]
+    );
+
+    console.log('[Database Debug] Pending change removed:', {
+      changeId: id,
+      success: !remainingChange,
+      entityId: change?.entity_id.substring(0, 8),
+      type: change?.action_type
+    });
   }
 
   async clearAllData(): Promise<void> {
@@ -303,6 +400,7 @@ class DatabaseService {
         DELETE FROM lists;
         DELETE FROM selected_list;
         DELETE FROM pending_changes;
+        DELETE FROM id_mappings;
       `);
     });
   }
@@ -319,6 +417,142 @@ class DatabaseService {
        WHERE id = ?`,
       [newEntityId, changeId]
     );
+  }
+
+  async incrementChangeRetry(changeId: number): Promise<void> {
+    console.log('[Database] Incrementing retry count for change:', changeId);
+    
+    await db.runAsync(
+      `UPDATE pending_changes 
+       SET retries = retries + 1 
+       WHERE id = ?`,
+      [changeId]
+    );
+  }
+
+  // ID Mapping operations
+  async saveIdMapping(tempId: string, actualId: string, status: 'pending' | 'completed' | 'failed'): Promise<void> {
+    console.log('[Database Debug] Saving ID mapping:', {
+      tempId: tempId.substring(0, 8),
+      actualId: actualId.substring(0, 8),
+      status
+    });
+
+    const now = Date.now();
+    await db.runAsync(
+      `INSERT OR REPLACE INTO id_mappings 
+       (temp_id, actual_id, status, created_at, updated_at) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [tempId, actualId, status, now, now]
+    );
+
+    // Verify the mapping was saved
+    const savedMapping = await db.getFirstAsync<{ temp_id: string, actual_id: string, status: string }>(
+      'SELECT temp_id, actual_id, status FROM id_mappings WHERE temp_id = ? OR actual_id = ?',
+      [tempId, actualId]
+    );
+
+    console.log('[Database Debug] ID mapping saved:', {
+      success: !!savedMapping,
+      tempId: savedMapping?.temp_id.substring(0, 8),
+      actualId: savedMapping?.actual_id.substring(0, 8),
+      status: savedMapping?.status
+    });
+  }
+
+  async getIdMapping(id: string): Promise<{ tempId: string; actualId: string; status: string } | null> {
+    console.log('[Database Debug] Looking up ID mapping:', {
+      id: id.substring(0, 8)
+    });
+
+    const mapping = await db.getFirstAsync<{ temp_id: string; actual_id: string; status: string }>(
+      'SELECT temp_id, actual_id, status FROM id_mappings WHERE temp_id = ? OR actual_id = ?',
+      [id, id]
+    );
+
+    console.log('[Database Debug] ID mapping lookup result:', {
+      id: id.substring(0, 8),
+      found: !!mapping,
+      mapping: mapping ? {
+        tempId: mapping.temp_id.substring(0, 8),
+        actualId: mapping.actual_id.substring(0, 8),
+        status: mapping.status
+      } : null
+    });
+
+    return mapping ? {
+      tempId: mapping.temp_id,
+      actualId: mapping.actual_id,
+      status: mapping.status
+    } : null;
+  }
+
+  async getAllIdMappings(): Promise<Array<{ tempId: string; actualId: string; status: string }>> {
+    console.log('[Database Debug] Fetching all ID mappings');
+
+    const mappings = await db.getAllAsync<{ temp_id: string; actual_id: string; status: string }>(
+      'SELECT temp_id, actual_id, status FROM id_mappings'
+    );
+
+    console.log('[Database Debug] ID mappings summary:', {
+      total: mappings.length,
+      byStatus: mappings.reduce((acc, m) => {
+        acc[m.status] = (acc[m.status] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>),
+      mappings: mappings.map(m => ({
+        tempId: m.temp_id.substring(0, 8),
+        actualId: m.actual_id.substring(0, 8),
+        status: m.status
+      }))
+    });
+
+    return mappings.map(m => ({
+      tempId: m.temp_id,
+      actualId: m.actual_id,
+      status: m.status
+    }));
+  }
+
+  async updateIdMappingStatus(id: string, status: 'pending' | 'completed' | 'failed'): Promise<void> {
+    console.log('[Database Debug] Updating ID mapping status:', {
+      id: id.substring(0, 8),
+      newStatus: status
+    });
+
+    await db.runAsync(
+      `UPDATE id_mappings 
+       SET status = ?, updated_at = ? 
+       WHERE temp_id = ? OR actual_id = ?`,
+      [status, Date.now(), id, id]
+    );
+
+    // Verify the update
+    const updatedMapping = await db.getFirstAsync<{ status: string }>(
+      'SELECT status FROM id_mappings WHERE temp_id = ? OR actual_id = ?',
+      [id, id]
+    );
+
+    console.log('[Database Debug] ID mapping status updated:', {
+      id: id.substring(0, 8),
+      success: updatedMapping?.status === status,
+      currentStatus: updatedMapping?.status
+    });
+  }
+
+  async removeIdMapping(tempId: string): Promise<void> {
+    console.log('[Database Debug] Removing ID mapping:', {
+      tempId: tempId.substring(0, 8)
+    });
+
+    await db.runAsync(
+      'DELETE FROM id_mappings WHERE temp_id = ?',
+      [tempId]
+    );
+
+    console.log('[Database Debug] ID mapping removed:', {
+      tempId: tempId.substring(0, 8)
+    });
   }
 }
 

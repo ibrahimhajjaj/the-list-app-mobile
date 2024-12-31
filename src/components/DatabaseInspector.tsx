@@ -5,6 +5,7 @@ import { useThemeColors } from '../constants/theme';
 import { Database, Copy, Trash2, CopyCheck } from 'lucide-react-native';
 import * as SQLite from 'expo-sqlite';
 import * as Clipboard from 'expo-clipboard';
+import { storage } from '../services/storage';
 
 const db = SQLite.openDatabaseSync('thelistapp.db');
 
@@ -296,14 +297,51 @@ export function DatabaseInspector() {
             <Text style={[styles.modalTitle, { color: colors.foreground }]}>
               Database Inspector
             </Text>
-            <TouchableOpacity
-              style={[styles.closeButton, { backgroundColor: colors.muted }]}
-              onPress={() => setIsModalVisible(false)}
-            >
-              <Text style={[styles.closeButtonText, { color: colors.mutedForeground }]}>
-                Close
-              </Text>
-            </TouchableOpacity>
+            <View style={styles.headerButtons}>
+              <TouchableOpacity
+                style={[styles.resetButton, { backgroundColor: colors.destructive }]}
+                onPress={() => {
+                  Alert.alert(
+                    'Reset Database',
+                    'Are you sure you want to reset the database? This will clear all data except authentication.',
+                    [
+                      {
+                        text: 'Cancel',
+                        style: 'cancel'
+                      },
+                      {
+                        text: 'Reset',
+                        style: 'destructive',
+                        onPress: async () => {
+                          try {
+                            await storage.resetLocalDBExceptAuth();
+                            await fetchTableInfo(); // Refresh the table data
+                            setSelectedTable(null);
+                            setTableData({});
+                            Alert.alert('Success', 'Database has been reset successfully');
+                          } catch (error) {
+                            console.error('Failed to reset database:', error);
+                            Alert.alert('Error', 'Failed to reset database. Check console for details.');
+                          }
+                        }
+                      }
+                    ]
+                  );
+                }}
+              >
+                <Text style={[styles.resetButtonText, { color: colors.destructiveForeground }]}>
+                  Reset DB
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.closeButton, { backgroundColor: colors.muted }]}
+                onPress={() => setIsModalVisible(false)}
+              >
+                <Text style={[styles.closeButtonText, { color: colors.mutedForeground }]}>
+                  Close
+                </Text>
+              </TouchableOpacity>
+            </View>
           </View>
 
           <ScrollView style={styles.contentContainer}>
@@ -531,5 +569,18 @@ const styles = StyleSheet.create({
   systemTableDescription: {
     fontSize: 12,
     marginTop: 4,
+  },
+  headerButtons: {
+    flexDirection: 'row',
+    gap: theme.spacing.s,
+  },
+  resetButton: {
+    paddingHorizontal: theme.spacing.m,
+    paddingVertical: theme.spacing.s,
+    borderRadius: theme.borderRadius.m,
+  },
+  resetButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 }); 

@@ -1,17 +1,8 @@
 import { databaseService } from './database';
 import api from './api';
 import { store, updateListInStore } from '../store';
-import { List, ListItem } from '../types/list';
-
-interface SyncError extends Error {
-  response?: {
-    status: number;
-    data?: {
-      serverVersion?: number;
-      conflictType?: 'UPDATE' | 'DELETE';
-    };
-  };
-}
+import { List } from '../types/list';
+import { storage } from './storage';
 
 interface PendingChange {
   id: number;
@@ -38,7 +29,38 @@ class SyncService {
   private idMappings: Map<string, IDMapping> = new Map();
 
   constructor() {
-    // No need to set up network listener here as it's handled in RootNavigator
+    // Initialize ID mappings from database
+    this.initializeIdMappings();
+  }
+
+  private async initializeIdMappings() {
+    console.log('[Sync Debug] Initializing ID mappings from database');
+    try {
+      const mappings = await databaseService.getAllIdMappings();
+      this.idMappings.clear();
+      
+      mappings.forEach(mapping => {
+        const idMapping: IDMapping = {
+          tempId: mapping.tempId,
+          actualId: mapping.actualId,
+          status: mapping.status as 'pending' | 'completed' | 'failed'
+        };
+        this.idMappings.set(mapping.tempId, idMapping);
+        this.idMappings.set(mapping.actualId, idMapping);
+      });
+
+      console.log('[Sync Debug] ID mappings initialized:', {
+        totalMappings: mappings.length,
+        mappings: Array.from(this.idMappings.entries()).map(([id, m]) => ({
+          id: id.substring(0, 8),
+          tempId: m.tempId.substring(0, 8),
+          actualId: m.actualId.substring(0, 8),
+          status: m.status
+        }))
+      });
+    } catch (error) {
+      console.error('[Sync Debug] Error initializing ID mappings:', error);
+    }
   }
 
   startPeriodicSync(intervalMs: number = 30000) {
@@ -72,6 +94,12 @@ class SyncService {
   }
 
   async addPendingChange(actionType: string, entityId: string, data: any) {
+    console.log('[Sync] Adding pending change:', {
+      type: actionType,
+      entityId: entityId.substring(0, 8),
+      dataKeys: Object.keys(data)
+    });
+
     await databaseService.addPendingChange(actionType, entityId, data);
     
     // Check network state from Redux store
@@ -98,40 +126,43 @@ class SyncService {
 
   private async processPendingChanges() {
     if (this.isProcessing) {
-      console.log('[Sync Queue] Already processing changes, skipping...');
+      console.log('[Sync] Already processing changes, skipping...');
       return;
     }
 
     const startTime = Date.now();
-    console.log('[Sync Queue] Starting sync process:', { startTime });
+    console.log('[Sync] Starting sync process:', { 
+      startTime,
+      mappings: Array.from(this.idMappings.entries()).map(([id, mapping]) => ({
+        id: id.substring(0, 8),
+        tempId: mapping.tempId.substring(0, 8),
+        actualId: mapping.actualId.substring(0, 8),
+        status: mapping.status
+      }))
+    });
 
     try {
       this.isProcessing = true;
-      console.time('fetchPendingChanges');
       const pendingChanges = await databaseService.getPendingChanges();
-      console.timeEnd('fetchPendingChanges');
       
-      console.log('[Sync Queue] Retrieved pending changes:', {
+      console.log('[Sync] Retrieved pending changes:', {
         duration: Date.now() - startTime,
         totalChanges: pendingChanges.length,
         changes: pendingChanges.map(c => ({
           id: c.id,
           type: c.actionType,
-          entityId: c.entityId
+          entityId: c.entityId.substring(0, 8)
         }))
       });
 
       // Group changes by entity and sort by operation type
-      console.time('groupAndSortChanges');
       const changesByEntity = this.groupChangesByEntity(pendingChanges);
-      console.timeEnd('groupAndSortChanges');
       
       // Process each entity's changes in sequence
       for (const [entityId, changes] of changesByEntity) {
         const groupStartTime = Date.now();
-        console.log('[Sync Queue] Processing entity group:', {
-          startTime: groupStartTime,
-          entityId,
+        console.log('[Sync] Processing entity group:', {
+          entityId: entityId.substring(0, 8),
           totalChanges: changes.length,
           changes: changes.map(c => ({
             id: c.id,
@@ -141,24 +172,44 @@ class SyncService {
 
         try {
           await this.processEntityChanges(entityId, changes);
-          console.log('[Sync Queue] Completed entity group:', {
-            entityId,
+          
+          // After successful sync, cleanup any temp lists and mappings
+          const mapping = this.idMappings.get(entityId);
+          if (mapping && mapping.status === 'completed') {
+            console.log('[Sync] Running cleanup after successful sync:', {
+              entityId: entityId.substring(0, 8),
+              mapping: {
+                tempId: mapping.tempId.substring(0, 8),
+                actualId: mapping.actualId.substring(0, 8)
+              }
+            });
+            await this.cleanupAfterSync(mapping.tempId, mapping.actualId);
+          }
+
+          console.log('[Sync] Completed entity group:', {
+            entityId: entityId.substring(0, 8),
             duration: Date.now() - groupStartTime
           });
         } catch (error) {
-          console.error('[Sync Queue] Failed entity group:', {
-            entityId,
+          console.error('[Sync] Failed entity group:', {
+            entityId: entityId.substring(0, 8),
             duration: Date.now() - groupStartTime,
-            error
+            error: error instanceof Error ? error.message : String(error)
           });
           await this.markDependentChangesFailed(entityId, changes);
         }
       }
 
       const endTime = Date.now();
-      console.log('[Sync Queue] Sync process completed:', {
+      console.log('[Sync] Sync process completed:', {
         totalDuration: endTime - startTime,
-        endTime
+        endTime,
+        finalMappings: Array.from(this.idMappings.entries()).map(([id, mapping]) => ({
+          id: id.substring(0, 8),
+          tempId: mapping.tempId.substring(0, 8),
+          actualId: mapping.actualId.substring(0, 8),
+          status: mapping.status
+        }))
       });
     } finally {
       this.isProcessing = false;
@@ -184,40 +235,89 @@ class SyncService {
   private async processEntityChanges(entityId: string, changes: PendingChange[]) {
     const startTime = Date.now();
     let operationCount = 0;
+    const tempIdPattern = /^temp_\d+_[a-z0-9]+$/;
+
+    // Add detailed mapping state logging
+    console.log('[Sync Debug] Starting entity changes:', {
+      entityId: entityId.substring(0, 8),
+      totalChanges: changes.length,
+      currentMappings: Array.from(this.idMappings.entries()).map(([id, m]) => ({
+        id: id.substring(0, 8),
+        tempId: m.tempId.substring(0, 8),
+        actualId: m.actualId.substring(0, 8),
+        status: m.status
+      }))
+    });
 
     try {
       for (const change of changes) {
         const opStartTime = Date.now();
         operationCount++;
 
-        console.log('[Sync Queue] Starting operation:', {
-          count: operationCount,
-          totalOps: changes.length,
-          type: change.actionType,
-          startTime: opStartTime
+        // Enhanced temp ID logging
+        if (tempIdPattern.test(change.entityId)) {
+          console.log('[Sync Debug] Processing temp ID:', {
+            tempId: change.entityId.substring(0, 8),
+            operation: change.actionType,
+            existingMappings: Array.from(this.idMappings.entries())
+              .filter(([_, m]) => m.tempId === change.entityId)
+              .map(([id, m]) => ({
+                id: id.substring(0, 8),
+                status: m.status,
+                actualId: m.actualId.substring(0, 8)
+              }))
+          });
+        }
+
+        // Add pre-operation mapping check
+        console.log('[Sync Debug] Pre-operation mapping state:', {
+          entityId: change.entityId.substring(0, 8),
+          operation: change.actionType,
+          hasMapping: this.idMappings.has(change.entityId),
+          mappingDetails: this.idMappings.get(change.entityId)
         });
 
         await this.processChange(change);
 
-        console.log('[Sync Queue] Completed operation:', {
-          type: change.actionType,
+        // Add post-operation mapping check
+        console.log('[Sync Debug] Post-operation mapping state:', {
+          entityId: change.entityId.substring(0, 8),
+          operation: change.actionType,
+          hasMapping: this.idMappings.has(change.entityId),
+          mappingDetails: this.idMappings.get(change.entityId),
           duration: Date.now() - opStartTime
         });
       }
 
-      console.log('[Sync Queue] Entity changes completed:', {
-        entityId,
-        totalOperations: operationCount,
-        totalDuration: Date.now() - startTime,
-        averageOpTime: (Date.now() - startTime) / operationCount
-      });
-    } catch (error) {
-      console.error('[Sync Queue] Entity changes failed:', {
-        entityId,
-        completedOps: operationCount,
-        totalOps: changes.length,
+      // Add final mapping state for this entity
+      console.log('[Sync Debug] Completed entity changes:', {
+        entityId: entityId.substring(0, 8),
+        totalOps: operationCount,
         duration: Date.now() - startTime,
-        error
+        finalMappings: Array.from(this.idMappings.entries())
+          .filter(([id, _]) => id === entityId || this.idMappings.get(id)?.tempId === entityId)
+          .map(([id, m]) => ({
+            id: id.substring(0, 8),
+            tempId: m.tempId.substring(0, 8),
+            actualId: m.actualId.substring(0, 8),
+            status: m.status
+          }))
+      });
+
+    } catch (error) {
+      console.error('[Sync Debug] Entity changes failed:', {
+        entityId: entityId.substring(0, 8),
+        error: error instanceof Error ? error.message : String(error),
+        completedOps: operationCount,
+        duration: Date.now() - startTime,
+        failedMappings: Array.from(this.idMappings.entries())
+          .filter(([id, _]) => id === entityId || this.idMappings.get(id)?.tempId === entityId)
+          .map(([id, m]) => ({
+            id: id.substring(0, 8),
+            tempId: m.tempId.substring(0, 8),
+            actualId: m.actualId.substring(0, 8),
+            status: m.status
+          }))
       });
       throw error;
     }
@@ -242,22 +342,27 @@ class SyncService {
           // Ensure we have a valid ID mapping
           const mapping = this.idMappings.get(change.entityId);
           if (!mapping || mapping.status !== 'completed') {
-            // Try to find mapping by actualId
-            const mappingByActualId = Array.from(this.idMappings.values())
-              .find(m => m.actualId === change.entityId);
+            // Try to find mapping in database
+            const dbMapping = await databaseService.getIdMapping(change.entityId);
             
-            if (mappingByActualId) {
-              console.log('[Sync Queue] Found mapping by actual ID:', {
+            if (dbMapping && dbMapping.status === 'completed') {
+              console.log('[Sync Queue] Found mapping in database:', {
                 entityId: change.entityId,
-                mapping: mappingByActualId
+                mapping: dbMapping
               });
-              // Update the mapping for this entity
-              this.idMappings.set(change.entityId, mappingByActualId);
+              // Update memory mapping
+              const newMapping: IDMapping = {
+                tempId: dbMapping.tempId,
+                actualId: dbMapping.actualId,
+                status: dbMapping.status as 'pending' | 'completed' | 'failed'
+              };
+              this.idMappings.set(change.entityId, newMapping);
             } else {
               console.warn('[Sync Queue] Cannot process operation - no valid mapping found:', {
                 type: change.actionType,
                 entityId: change.entityId,
                 currentMapping: mapping,
+                dbMapping,
                 allMappings: Array.from(this.idMappings.entries())
               });
               throw new Error('Missing required ID mapping');
@@ -283,6 +388,69 @@ class SyncService {
     }
   }
 
+  private async cleanupAfterSync(tempId: string, actualId: string) {
+    console.log('[Sync Cleanup] Starting cleanup:', {
+      tempId: tempId.substring(0, 8),
+      actualId: actualId.substring(0, 8)
+    });
+
+    try {
+      // Get current lists from storage
+      const storedLists = await storage.getLists();
+      
+      // Log state before cleanup
+      console.log('[Sync Cleanup] Before cleanup:', {
+        tempId,
+        actualId,
+        totalLists: storedLists.length,
+        tempLists: storedLists.filter((l: List) => l.isTemp).length,
+        lists: storedLists.map((l: List) => ({
+          id: l._id.substring(0, 8),
+          title: l.title,
+          isTemp: l.isTemp
+        }))
+      });
+      
+      // Remove the temporary list while keeping the actual one
+      const updatedLists = storedLists.filter((list: List) => 
+        list._id !== tempId || list._id === actualId
+      );
+
+      // Save the filtered lists back to storage
+      await storage.saveLists(updatedLists);
+
+      // Remove the ID mapping since we don't need it anymore
+      await databaseService.removeIdMapping(tempId);
+
+      // Log state after cleanup
+      console.log('[Sync Cleanup] After cleanup:', {
+        tempId,
+        actualId,
+        totalLists: updatedLists.length,
+        tempLists: updatedLists.filter((l: List) => l.isTemp).length,
+        lists: updatedLists.map((l: List) => ({
+          id: l._id.substring(0, 8),
+          title: l.title,
+          isTemp: l.isTemp
+        })),
+        removedMapping: true
+      });
+
+      console.log('[Sync Cleanup] Completed:', {
+        tempId: tempId.substring(0, 8),
+        actualId: actualId.substring(0, 8),
+        removedMapping: true,
+        listsRemoved: storedLists.length - updatedLists.length
+      });
+    } catch (error) {
+      console.error('[Sync Cleanup] Failed:', {
+        tempId: tempId.substring(0, 8),
+        actualId: actualId.substring(0, 8),
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+  }
+
   private async processCreateList(change: PendingChange) {
     const startTime = Date.now();
     try {
@@ -303,16 +471,20 @@ class SyncService {
 
       // Batch our storage operations
       await Promise.all([
-        // Update ID mappings
+        // Update ID mappings in memory and database
         (async () => {
           this.idMappings.set(change.entityId, newMapping);
           this.idMappings.set(newList._id, newMapping);
+          await databaseService.saveIdMapping(change.entityId, newList._id, 'completed');
         })(),
         // Update store
         store.dispatch(updateListInStore(newList)),
         // Remove pending change
         databaseService.removePendingChange(change.id)
       ]);
+
+      // Clean up the temporary list and mapping
+      await this.cleanupAfterSync(change.entityId, newList._id);
 
       console.log('[Sync Queue] List created:', {
         duration: Date.now() - startTime,
@@ -330,31 +502,71 @@ class SyncService {
   }
 
   private getActualId(entityId: string): string {
+    // Add detailed ID resolution logging
+    console.log('[Sync Debug] Resolving actual ID:', {
+      entityId: entityId.substring(0, 8),
+      isTemp: entityId.startsWith('temp_'),
+      mappingCount: this.idMappings.size
+    });
+
+    // First try direct mapping from memory
     const mapping = this.idMappings.get(entityId);
     if (mapping?.status === 'completed') {
-      console.log('[Sync Queue] Found ID mapping:', {
-        entityId,
-        mapping
+      console.log('[Sync Debug] Found direct mapping in memory:', {
+        entityId: entityId.substring(0, 8),
+        actualId: mapping.actualId.substring(0, 8),
+        status: mapping.status
       });
       return mapping.actualId;
     }
-    
-    // Try to find by actual ID
+
+    // Try to find by actual ID in memory
     const mappingByActualId = Array.from(this.idMappings.values())
       .find(m => m.actualId === entityId);
-    
+
     if (mappingByActualId) {
-      console.log('[Sync Queue] Found reverse ID mapping:', {
-        entityId,
-        mapping: mappingByActualId
+      console.log('[Sync Debug] Found reverse mapping in memory:', {
+        entityId: entityId.substring(0, 8),
+        actualId: mappingByActualId.actualId.substring(0, 8),
+        status: mappingByActualId.status
       });
       return mappingByActualId.actualId;
     }
-    
-    console.log('[Sync Queue] No mapping found:', {
-      entityId,
-      allMappings: Array.from(this.idMappings.entries())
+
+    // If not found in memory, try database
+    databaseService.getIdMapping(entityId).then(dbMapping => {
+      if (dbMapping) {
+        console.log('[Sync Debug] Found mapping in database:', {
+          entityId: entityId.substring(0, 8),
+          mapping: {
+            tempId: dbMapping.tempId.substring(0, 8),
+            actualId: dbMapping.actualId.substring(0, 8),
+            status: dbMapping.status
+          }
+        });
+        // Update memory mapping for future use
+        const newMapping: IDMapping = {
+          tempId: dbMapping.tempId,
+          actualId: dbMapping.actualId,
+          status: dbMapping.status as 'pending' | 'completed' | 'failed'
+        };
+        this.idMappings.set(dbMapping.tempId, newMapping);
+        this.idMappings.set(dbMapping.actualId, newMapping);
+        return dbMapping.actualId;
+      }
     });
+
+    // Log mapping failure details
+    console.log('[Sync Debug] No mapping found:', {
+      entityId: entityId.substring(0, 8),
+      allMappings: Array.from(this.idMappings.entries()).map(([id, m]) => ({
+        id: id.substring(0, 8),
+        tempId: m.tempId.substring(0, 8),
+        actualId: m.actualId.substring(0, 8),
+        status: m.status
+      }))
+    });
+
     return entityId;
   }
 
@@ -369,18 +581,61 @@ class SyncService {
         actualId
       });
 
-      const response = await api.patch(`/lists/${actualId}`, change.data);
-      
-      // Batch our storage operations
-      await Promise.all([
-        store.dispatch(updateListInStore(response.data)),
-        databaseService.removePendingChange(change.id)
-      ]);
+      try {
+        const response = await api.patch(`/lists/${actualId}`, change.data);
+        
+        // Batch our storage operations
+        await Promise.all([
+          store.dispatch(updateListInStore(response.data)),
+          databaseService.removePendingChange(change.id)
+        ]);
 
-      console.log('[Sync Queue] List updated:', {
-        duration: Date.now() - startTime,
-        actualId
-      });
+        console.log('[Sync Queue] List updated:', {
+          duration: Date.now() - startTime,
+          actualId
+        });
+      } catch (error: any) {
+        // Handle conflict (409) responses
+        if (error.response?.status === 409) {
+          console.log('[Sync Queue] Handling conflict:', {
+            entityId: change.entityId,
+            serverData: error.response.data.serverData,
+            serverVersion: error.response.data.serverData.__v,
+            conflictType: error.response.data.conflictType
+          });
+
+          // Get the server's version
+          const serverList = error.response.data.serverData;
+
+          // Merge changes
+          const mergedData = await this.handleConflict(change.entityId, serverList, error.response.data.conflictType);
+
+          console.log('[Sync Queue] Merged data:', {
+            entityId: change.entityId,
+            mergedFields: Object.keys(mergedData),
+            originalChanges: Object.keys(serverList),
+            serverVersion: serverList.__v
+          });
+
+          // Retry with merged data
+          const retryResponse = await api.patch(`/lists/${actualId}`, mergedData);
+          
+          // Update storage with merged result
+          await Promise.all([
+            store.dispatch(updateListInStore(retryResponse.data)),
+            databaseService.removePendingChange(change.id)
+          ]);
+
+          console.log('[Sync Queue] Conflict resolved:', {
+            entityId: change.entityId,
+            duration: Date.now() - startTime,
+            finalVersion: retryResponse.data.version
+          });
+        } else {
+          // Re-throw non-conflict errors
+          throw error;
+        }
+      }
     } catch (error: any) {
       console.error('[Sync Queue] Update failed:', {
         duration: Date.now() - startTime,
@@ -429,8 +684,38 @@ class SyncService {
     });
 
     for (const change of changes) {
-      await databaseService.updatePendingChangeStatus(change.id, 'failed');
+      await Promise.all([
+        databaseService.updatePendingChangeStatus(change.id, 'failed'),
+        databaseService.updateIdMappingStatus(change.entityId, 'failed')
+      ]);
     }
+  }
+
+  async handleConflict(entityId: string, serverData: any, conflictType: string) {
+    console.log('[Sync Queue] Handling conflict:', {
+      entityId,
+      conflictType,
+      serverData
+    });
+
+    // Only merge fields that are allowed to be updated
+    const allowedUpdates = ['title', 'items', 'category'] as const;
+    const mergedData: Record<string, any> = {};
+    
+    allowedUpdates.forEach(field => {
+      if (serverData[field] !== undefined) {
+        mergedData[field] = serverData[field];
+      }
+    });
+
+    console.log('[Sync Queue] Merged data:', {
+      entityId,
+      mergedFields: Object.keys(mergedData),
+      originalChanges: Object.keys(serverData),
+      serverVersion: serverData.__v
+    });
+
+    return mergedData;
   }
 }
 

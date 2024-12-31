@@ -21,8 +21,8 @@ import { useThemeColors } from '../../constants/theme';
 type Props = NativeStackScreenProps<AuthStackParamList, 'Login'>;
 
 export default function LoginScreen({ navigation }: Props) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('ibrhajjaj@gmail.com');
+  const [password, setPassword] = useState('12341234');
   const dispatch = useAppDispatch();
   const { loading, error, token, user } = useAppSelector((state) => state.auth);
   const colors = useThemeColors();

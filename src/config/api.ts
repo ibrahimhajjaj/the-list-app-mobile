@@ -16,8 +16,11 @@ export const API_CONFIG = {
       BASE: '/lists',
       SHARE: (listId: string) => `/lists/${listId}/share`,
     },
+    DEBUG: {
+      CLEANUP_LISTS: '/debug/cleanup-lists'
+    }
   },
-  TOKEN_KEY: '@app:auth_token',
+  TOKEN_KEY: '@app:auth_token'
 } as const;
 
 // Helper to create full URLs when needed
