@@ -1,5 +1,6 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
+import syncService from '../../services/sync';
 
 interface NetworkState {
   isConnected: boolean;
@@ -7,6 +8,7 @@ interface NetworkState {
   isInternetReachable: boolean | null;
   lastChecked: number | null;
   details: NetInfoState | null;
+  lastConnectionRestored: number | null;
 }
 
 const initialState: NetworkState = {
@@ -14,7 +16,8 @@ const initialState: NetworkState = {
   type: null,
   isInternetReachable: null,
   lastChecked: null,
-  details: null
+  details: null,
+  lastConnectionRestored: null
 };
 
 const networkSlice = createSlice({
@@ -22,11 +25,21 @@ const networkSlice = createSlice({
   initialState,
   reducers: {
     setNetworkState: (state, action: PayloadAction<NetInfoState>) => {
+      const wasDisconnected = !state.isConnected || !state.isInternetReachable;
+      const isNowConnected = action.payload.isConnected && action.payload.isInternetReachable;
+
       state.isConnected = action.payload.isConnected ?? false;
       state.type = action.payload.type;
       state.isInternetReachable = action.payload.isInternetReachable;
       state.lastChecked = Date.now();
       state.details = action.payload;
+
+      // If connection was restored, update lastConnectionRestored
+      if (wasDisconnected && isNowConnected) {
+        state.lastConnectionRestored = Date.now();
+        // Trigger immediate sync
+        syncService.processPendingChanges();
+      }
     },
     resetNetworkState: (state) => {
       state.isConnected = true;
@@ -34,6 +47,7 @@ const networkSlice = createSlice({
       state.isInternetReachable = null;
       state.lastChecked = null;
       state.details = null;
+      state.lastConnectionRestored = null;
     }
   }
 });

@@ -19,6 +19,7 @@ export default function ListsScreen() {
   const dispatch = useAppDispatch();
   const { lists, loading: listsLoading } = useAppSelector((state) => state.lists);
   const auth = useAppSelector((state) => state.auth);
+  const networkState = useAppSelector((state) => state.network);
   const { isDark } = useTheme();
   const [newListName, setNewListName] = useState('');
   const [selectedList, setSelectedList] = useState<string | null>(null);
@@ -56,6 +57,12 @@ export default function ListsScreen() {
       };
     }
   }, [selectedList]);
+
+  useEffect(() => {
+    if (networkState.lastConnectionRestored) {
+      dispatch(fetchLists());
+    }
+  }, [networkState.lastConnectionRestored, dispatch]);
 
   useEffect(() => {
     dispatch(fetchLists());

@@ -68,6 +68,7 @@ class SyncService {
       }
     }, intervalMs);
 
+    // Initial sync on start if connected
     const state = store.getState();
     const isConnected = state.network.isConnected && state.network.isInternetReachable;
     if (isConnected) {
@@ -104,7 +105,7 @@ class SyncService {
   }
 
   // Process all pending changes
-  private async processPendingChanges() {
+  async processPendingChanges() {
     if (this.isProcessing) {
       return;
     }
