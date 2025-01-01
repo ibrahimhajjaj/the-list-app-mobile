@@ -7,6 +7,14 @@ import networkReducer, {
   resetNetworkState, 
   initializeNetworkMonitoring 
 } from './slices/networkSlice';
+import connectionReducer, {
+  setConnectionStatus,
+  setAppState,
+  resetConnectionState,
+  selectConnectionState,
+  selectIsConnected,
+  selectIsReconnecting
+} from './slices/connectionSlice';
 import { 
   setLists, 
   setCurrentList, 
@@ -23,16 +31,17 @@ export const store = configureStore({
     lists: listReducer,
     settings: settingsReducer,
     network: networkReducer,
+    connection: connectionReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
       serializableCheck: {
         // Ignore these action types
-        ignoredActions: ['network/setNetworkState'],
+        ignoredActions: ['network/setNetworkState', 'connection/setConnectionStatus'],
         // Ignore these field paths in all actions
-        ignoredActionPaths: ['payload.details'],
+        ignoredActionPaths: ['payload.details', 'payload.error'],
         // Ignore these paths in the state
-        ignoredPaths: ['network.details'],
+        ignoredPaths: ['network.details', 'connection.error'],
       },
     }),
 });
@@ -59,4 +68,12 @@ export {
   updateListInStore,
   setLoading,
   setError,
+
+  // Connection actions and selectors
+  setConnectionStatus,
+  setAppState,
+  resetConnectionState,
+  selectConnectionState,
+  selectIsConnected,
+  selectIsReconnecting,
 }; 

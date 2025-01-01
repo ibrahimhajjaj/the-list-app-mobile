@@ -28,7 +28,6 @@ export function RootNavigator() {
   const previousTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Initialize network monitoring
     dispatch(initializeNetworkMonitoring());
 
     return () => {
@@ -51,7 +50,7 @@ export function RootNavigator() {
       try {
         const permissionsStatus = await checkPermissions();
         const permissionsNeeded = !permissionsStatus.notifications || !permissionsStatus.batteryOptimization;
-        
+
         if (!mountedRef.current) return;
 
         setNeedsPermissions(permissionsNeeded);
@@ -62,18 +61,14 @@ export function RootNavigator() {
           if (storedToken) {
             try {
               await dispatch(loadUser()).unwrap();
-              // Start sync service after successful auth
               syncService.startPeriodicSync(30000);
             } catch (error) {
-              console.error('[RootNavigator] Failed to load user session:', error);
               await storage.saveAuthToken(null);
             }
           }
         }
       } catch (error: any) {
-        if (mountedRef.current) {
-          console.error('[RootNavigator] Initialization error:', error);
-        }
+        // Error handling remains silent
       } finally {
         if (mountedRef.current) {
           setIsInitializing(false);
@@ -97,8 +92,6 @@ export function RootNavigator() {
         socketInitializedRef.current = false;
         socketService.disconnect();
         syncService.stopPeriodicSync();
-      } else if (!user && token) {
-        console.log('[RootNavigator] Waiting for user data before connecting socket');
       }
     };
 

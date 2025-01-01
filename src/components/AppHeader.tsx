@@ -9,6 +9,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { MainTabParamList } from '../navigation/types';
 import { useTheme } from '../contexts/ThemeContext';
 import { useThemeColors } from '../constants/theme';
+import { debugPanelManager, DebugPanel } from './DebugPanel';
 
 type NavigationProp = NativeStackNavigationProp<MainTabParamList>;
 
@@ -27,44 +28,53 @@ export function AppHeader() {
     navigation.navigate('Profile');
   };
 
+  const handleProfileLongPress = () => {
+    debugPanelManager.show();
+  };
+
   return (
-    <View style={[styles.header, { backgroundColor: colors.background, shadowColor: colors.shadowColor }]}>
-      <View style={styles.headerLeft}>
-        <Image 
-          source={require('../../assets/app-icon.png')} 
-          style={styles.appIcon} 
-        />
-        <Text style={[styles.appTitle, { color: colors.foreground }]}>The List App</Text>
+    <>
+      <View style={[styles.header, { backgroundColor: colors.background, shadowColor: colors.shadowColor }]}>
+        <View style={styles.headerLeft}>
+          <Image 
+            source={require('../../assets/app-icon.png')} 
+            style={styles.appIcon} 
+          />
+          <Text style={[styles.appTitle, { color: colors.foreground }]}>The List App</Text>
+        </View>
+        <View style={styles.headerRight}>
+          <TouchableOpacity 
+            style={styles.iconButton}
+            onPress={handleNotificationToggle}
+          >
+            {notificationsEnabled ? (
+              <Bell size={21} color={colors.foreground} />
+            ) : (
+              <BellOff size={21} color={colors.mutedForeground} />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.iconButton}
+            onPress={toggleTheme}
+          >
+            {isDark ? (
+              <Moon size={21} color={colors.foreground} />
+            ) : (
+              <Sun size={21} color={colors.foreground} />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={styles.profileButton}
+            onPress={handleProfilePress}
+            onLongPress={handleProfileLongPress}
+            delayLongPress={1000}
+          >
+            <User size={21} color={colors.foreground} />
+          </TouchableOpacity>
+        </View>
       </View>
-      <View style={styles.headerRight}>
-        <TouchableOpacity 
-          style={styles.iconButton}
-          onPress={handleNotificationToggle}
-        >
-          {notificationsEnabled ? (
-            <Bell size={21} color={colors.foreground} />
-          ) : (
-            <BellOff size={21} color={colors.mutedForeground} />
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.iconButton}
-          onPress={toggleTheme}
-        >
-          {isDark ? (
-            <Moon size={21} color={colors.foreground} />
-          ) : (
-            <Sun size={21} color={colors.foreground} />
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.profileButton}
-          onPress={handleProfilePress}
-        >
-          <User size={21} color={colors.foreground} />
-        </TouchableOpacity>
-      </View>
-    </View>
+      <DebugPanel />
+    </>
   );
 }
 

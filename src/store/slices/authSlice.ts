@@ -2,6 +2,7 @@ import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { authService } from '../../services/auth';
 import { userService } from '../../services/user';
 import type { store } from '../index';
+import { notificationService } from '../../services/notificationService';
 
 type AppState = ReturnType<typeof store.getState>;
 
@@ -148,6 +149,10 @@ const authSlice = createSlice({
         state.error = null;
         state.isAuthenticated = true;
         state.isOffline = false;
+        // Register for push notifications after successful login
+        notificationService.registerForPushNotifications().catch(error => {
+          console.error('[Auth] Failed to register for push notifications:', error);
+        });
       })
       .addCase(loginUser.rejected, (state, action) => {
         state.loading = false;
@@ -176,6 +181,10 @@ const authSlice = createSlice({
           timestamp: Date.now(),
           details: { success: true },
         };
+        // Register for push notifications after successful registration
+        notificationService.registerForPushNotifications().catch(error => {
+          console.error('[Auth] Failed to register for push notifications:', error);
+        });
       })
       .addCase(registerUser.rejected, (state, action) => {
         state.loading = false;
@@ -204,7 +213,7 @@ const authSlice = createSlice({
         state.token = action.payload.token;
         state.error = null;
         state.isAuthenticated = true;
-        state.isOffline = action.payload.isOffline;
+        state.isOffline = action.payload.isOffline || false;
       })
       .addCase(loadUser.rejected, (state, action) => {
         state.loading = false;

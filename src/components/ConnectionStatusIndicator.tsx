@@ -1,12 +1,15 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Animated, Platform } from 'react-native';
 import { useThemeColors } from '../constants/theme';
-import socketService from '../services/socket';
+import { useSelector } from 'react-redux';
+import { selectConnectionState, selectIsConnected, selectIsReconnecting } from '../store';
 
 export function ConnectionStatusIndicator() {
   const colors = useThemeColors();
   const [isVisible, setIsVisible] = useState(false);
-  const [status, setStatus] = useState<'connected' | 'connecting' | 'disconnected'>('connected');
+  const connectionState = useSelector(selectConnectionState);
+  const isConnected = useSelector(selectIsConnected);
+  const isReconnecting = useSelector(selectIsReconnecting);
   const opacity = React.useRef(new Animated.Value(0)).current;
 
   const animateVisibility = useCallback((toValue: number, callback?: () => void) => {
@@ -19,30 +22,28 @@ export function ConnectionStatusIndicator() {
 
   useEffect(() => {
     let hideTimeout: NodeJS.Timeout;
+    let previousStatus = connectionState.status;
 
     const checkConnectionStatus = () => {
-      const isConnected = socketService.isConnected;
-      const isReconnecting = socketService.isReconnecting;
-      
-      const newStatus = isConnected ? 'connected' : (isReconnecting ? 'connecting' : 'disconnected');
-      const shouldShow = newStatus !== 'connected';
+      if (connectionState.appState !== 'active') {
+        setIsVisible(false);
+        return;
+      }
+
+      const shouldShow = !isConnected && connectionState.status !== 'initializing';
       
       if (shouldShow !== isVisible) {
         if (shouldShow) {
           setIsVisible(true);
           animateVisibility(1);
         } else {
-          // Delay hiding when connected to show feedback
           hideTimeout = setTimeout(() => {
             animateVisibility(0, () => setIsVisible(false));
           }, 2000);
         }
       }
-      
-      setStatus(newStatus);
     };
 
-    // Check status immediately and set up interval
     checkConnectionStatus();
     const intervalId = setInterval(checkConnectionStatus, 1000);
 
@@ -50,29 +51,37 @@ export function ConnectionStatusIndicator() {
       clearInterval(intervalId);
       if (hideTimeout) clearTimeout(hideTimeout);
     };
-  }, [animateVisibility, isVisible]);
+  }, [connectionState, isConnected, isReconnecting, animateVisibility, isVisible]);
 
-  if (!isVisible) return null;
+  if (!isVisible || connectionState.appState !== 'active') return null;
 
   const getStatusColor = () => {
-    switch (status) {
+    switch (connectionState.status) {
       case 'connected':
         return colors.success;
       case 'connecting':
         return colors.warning;
       case 'disconnected':
+      case 'error':
         return colors.destructive;
+      default:
+        return colors.warning;
     }
   };
 
   const getMessage = () => {
-    switch (status) {
+    switch (connectionState.status) {
       case 'connected':
         return 'Connected';
       case 'connecting':
-        return 'Reconnecting...';
+        return isReconnecting ? 'Reconnecting...' : 'Connecting...';
       case 'disconnected':
         return 'Connection lost';
+      case 'error':
+        const errorMessage = connectionState.error?.message;
+        return errorMessage ? `Connection error: ${errorMessage}` : 'Connection error';
+      default:
+        return 'Connecting...';
     }
   };
 

@@ -73,15 +73,24 @@ export default function RegisterScreen({ navigation }: AuthStackScreenProps<'Reg
         // Successfully registered, navigation will be handled by RootNavigator
         console.log('[Register] Registration successful');
       }
-    } catch (err) {
-      // Error is already handled by the auth slice
+    } catch (err: any) {
       console.error('[Register] Registration failed:', err);
+      // Error is handled by the auth slice, but we can set field-specific errors
+      if (err.details) {
+        const fieldErrors = [];
+        if (err.details.email) fieldErrors.push(err.details.email);
+        if (err.details.password) fieldErrors.push(err.details.password);
+        if (err.details.name) fieldErrors.push(err.details.name);
+        if (fieldErrors.length > 0) {
+          setValidationError(fieldErrors.join('\n'));
+        }
+      }
     }
   };
 
   // Only show user-facing errors
   const shouldShowError = (error && error !== 'No token found') || validationError;
-  const errorMessage = validationError || error;
+  const errorMessage = validationError || (error && typeof error === 'string' ? error : 'Registration failed');
 
   return (
     <KeyboardAvoidingView
@@ -105,12 +114,21 @@ export default function RegisterScreen({ navigation }: AuthStackScreenProps<'Reg
           
           {shouldShowError && (
             <View style={[styles.errorContainer, { backgroundColor: colors.destructive + '15' }]}>
-              <Text style={[styles.errorText, { color: colors.destructive }]}>
-                {errorMessage}
-              </Text>
-              {lastAttempt?.details?.status && (
+              {errorMessage.split('\n').map((msg, index) => (
+                <Text 
+                  key={index} 
+                  style={[
+                    styles.errorText, 
+                    { color: colors.destructive },
+                    index > 0 && styles.errorTextMargin
+                  ]}
+                >
+                  {msg}
+                </Text>
+              ))}
+              {lastAttempt?.details?.message && (
                 <Text style={[styles.errorDetail, { color: colors.destructive }]}>
-                  Status: {lastAttempt.details.status}
+                  {lastAttempt.details.message}
                 </Text>
               )}
             </View>
@@ -278,5 +296,8 @@ const styles = StyleSheet.create({
     fontSize: theme.typography.fontSize.body,
     fontWeight: theme.typography.fontWeight.medium,
     textDecorationLine: 'underline',
+  },
+  errorTextMargin: {
+    marginTop: theme.spacing.xs,
   },
 }); 

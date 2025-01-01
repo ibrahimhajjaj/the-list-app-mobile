@@ -35,15 +35,18 @@ export default {
 		  },
 		  category: ['android.intent.category.DEFAULT']
 		}
-	  ]
+	  ],
+	  googleServicesFile: './google-services.json'
 	},
 	web: {
 	  favicon: './assets/favicon.png'
 	},
 	extra: {
 	  API_URL: process.env.API_URL,
+	  WS_URL: process.env.WS_URL,
+	  EXPO_PROJECT_ID: process.env.EXPO_PROJECT_ID,
 	  eas: {
-		projectId: "your-project-id"
+		projectId: process.env.EXPO_PROJECT_ID
 	  }
 	},
 	owner: "ibrahimwithi",
