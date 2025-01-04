@@ -1,9 +1,12 @@
 import { databaseService } from './database';
 import api from './api';
 import { store, updateListInStore } from '../store';
-import { List } from '../types/list';
+import { List, ListItem } from '../types/list';
 import { storage } from './storage';
 import { conflictResolutionService } from './conflictResolution';
+import { ACTION_TYPES } from '../types/list';
+import { API_CONFIG } from '../config/api';
+import { fetchLists } from '../store/actions/listActions';
 
 // Define status types enum for better type safety and maintainability
 enum SyncStatus {
@@ -12,16 +15,23 @@ enum SyncStatus {
   FAILED = 'failed'
 }
 
-// Define action types enum for better type safety and maintainability
-enum ActionType {
-  CREATE = 'CREATE_LIST',
-  UPDATE = 'UPDATE_LIST',
-  DELETE = 'DELETE_LIST'
-}
+// Define action types for internal use
+type ListActionType = typeof ACTION_TYPES.CREATE_LIST | 
+  typeof ACTION_TYPES.UPDATE_LIST | 
+  typeof ACTION_TYPES.DELETE_LIST |
+  typeof ACTION_TYPES.SHARE_LIST |
+  typeof ACTION_TYPES.UNSHARE_LIST;
+
+type ListItemActionType = typeof ACTION_TYPES.ADD_LIST_ITEM | 
+  typeof ACTION_TYPES.UPDATE_LIST_ITEM | 
+  typeof ACTION_TYPES.DELETE_LIST_ITEM | 
+  typeof ACTION_TYPES.REORDER_LIST_ITEMS;
+
+type SyncActionType = ListActionType | ListItemActionType;
 
 interface PendingChange {
   id: number;
-  actionType: ActionType;
+  actionType: SyncActionType;
   entityId: string;
   data: any;
   timestamp: number;
@@ -160,7 +170,73 @@ class SyncService {
   }
 
   // Add a new change to the pending changes queue
-  async addPendingChange(actionType: ActionType, entityId: string, data: any) {
+  async addPendingChange(actionType: SyncActionType, entityId: string, data: any) {
+    console.log('[Sync] Adding pending change:', {
+      actionType,
+      entityId,
+      data
+    });
+
+    // For updates or deletions of temporary items, modify the original ADD_LIST_ITEM change
+    if ((actionType === ACTION_TYPES.UPDATE_LIST_ITEM || actionType === ACTION_TYPES.DELETE_LIST_ITEM) && 
+        data.itemId.startsWith('temp_')) {
+      const pendingChanges = await databaseService.getPendingChanges();
+      const originalChange = pendingChanges.find(change => 
+        change.actionType === ACTION_TYPES.ADD_LIST_ITEM &&
+        change.entityId === entityId &&
+        change.data.items.some((item: ListItem) => item._id === data.itemId)
+      );
+
+      if (originalChange) {
+        console.log('[Sync] Found original add change for temp item:', {
+          changeId: originalChange.id,
+          itemId: data.itemId
+        });
+
+        if (actionType === ACTION_TYPES.DELETE_LIST_ITEM) {
+          // Remove the item from the original change
+          const updatedItems = originalChange.data.items.filter((item: ListItem) => 
+            item._id !== data.itemId
+          );
+
+          console.log('[Sync] Removing item from original change:', {
+            itemId: data.itemId,
+            remainingItems: updatedItems.length
+          });
+
+          if (updatedItems.length === 0) {
+            // If no items left, remove the entire change
+            await databaseService.removePendingChange(originalChange.id);
+            console.log('[Sync] Removed empty add change');
+          } else {
+            // Update the change with remaining items
+            await databaseService.updatePendingChange(originalChange.id, {
+              ...originalChange,
+              data: { ...originalChange.data, items: updatedItems }
+            });
+            console.log('[Sync] Updated original change with remaining items');
+          }
+        } else {
+          // Update the item in the original change
+          const updatedItems = originalChange.data.items.map((item: ListItem) =>
+            item._id === data.itemId ? { ...item, ...data.updates } : item
+          );
+
+          console.log('[Sync] Updating original change with modified items:', {
+            itemCount: updatedItems.length,
+            itemIds: updatedItems.map((i: ListItem) => i._id)
+          });
+
+          await databaseService.updatePendingChange(originalChange.id, {
+            ...originalChange,
+            data: { ...originalChange.data, items: updatedItems }
+          });
+        }
+        return;
+      }
+    }
+
+    // For all other cases, proceed with adding a new pending change
     await databaseService.addPendingChange(actionType, entityId, data);
     
     const state = store.getState();
@@ -173,11 +249,22 @@ class SyncService {
 
   // Sort changes by operation type priority
   private sortChangesByPriority(changes: PendingChange[]): PendingChange[] {
-    const createChanges = changes.filter(c => c.actionType === ActionType.CREATE);
-    const updateChanges = changes.filter(c => c.actionType === ActionType.UPDATE);
-    const deleteChanges = changes.filter(c => c.actionType === ActionType.DELETE);
+    const listChanges = changes.filter(c => [
+      ACTION_TYPES.CREATE_LIST,
+      ACTION_TYPES.UPDATE_LIST,
+      ACTION_TYPES.DELETE_LIST,
+      ACTION_TYPES.SHARE_LIST,
+      ACTION_TYPES.UNSHARE_LIST
+    ].includes(c.actionType as ListActionType));
 
-    return [...createChanges, ...updateChanges, ...deleteChanges];
+    const itemChanges = changes.filter(c => [
+      ACTION_TYPES.ADD_LIST_ITEM,
+      ACTION_TYPES.UPDATE_LIST_ITEM,
+      ACTION_TYPES.DELETE_LIST_ITEM,
+      ACTION_TYPES.REORDER_LIST_ITEMS
+    ].includes(c.actionType as ListItemActionType));
+
+    return [...listChanges, ...itemChanges];
   }
 
   // Process all pending changes
@@ -260,23 +347,60 @@ class SyncService {
 
   /**
    * Process a single change operation based on its action type.
-   * Routes the change to the appropriate handler based on the action type
-   * (create, update, or delete).
+   * Routes the change to the appropriate handler based on the action type.
    * 
    * @param change - The change operation to process
    */
   private async processChange(change: PendingChange) {
-    switch (change.actionType) {
-      case ActionType.CREATE:
+    const isListAction = [
+      ACTION_TYPES.CREATE_LIST,
+      ACTION_TYPES.UPDATE_LIST,
+      ACTION_TYPES.DELETE_LIST,
+      ACTION_TYPES.SHARE_LIST,
+      ACTION_TYPES.UNSHARE_LIST
+    ].includes(change.actionType as ListActionType);
+
+    const isItemAction = [
+      ACTION_TYPES.ADD_LIST_ITEM,
+      ACTION_TYPES.UPDATE_LIST_ITEM,
+      ACTION_TYPES.DELETE_LIST_ITEM,
+      ACTION_TYPES.REORDER_LIST_ITEMS
+    ].includes(change.actionType as ListItemActionType);
+
+    if (isListAction) {
+      switch (change.actionType as ListActionType) {
+        case ACTION_TYPES.CREATE_LIST:
         await this.processCreateList(change);
         break;
-      case ActionType.UPDATE:
+        case ACTION_TYPES.UPDATE_LIST:
         await this.processUpdateList(change);
         break;
-      case ActionType.DELETE:
+        case ACTION_TYPES.DELETE_LIST:
         await this.processDeleteList(change);
         break;
-      default:
+        case ACTION_TYPES.SHARE_LIST:
+          await this.processShareList(change);
+          break;
+        case ACTION_TYPES.UNSHARE_LIST:
+          await this.processUnshareList(change);
+          break;
+      }
+    } else if (isItemAction) {
+      switch (change.actionType as ListItemActionType) {
+        case ACTION_TYPES.ADD_LIST_ITEM:
+          await this.processAddListItems(change);
+          break;
+        case ACTION_TYPES.UPDATE_LIST_ITEM:
+          await this.processUpdateListItem(change);
+          break;
+        case ACTION_TYPES.DELETE_LIST_ITEM:
+          await this.processDeleteListItem(change);
+          break;
+        case ACTION_TYPES.REORDER_LIST_ITEMS:
+          await this.processReorderListItem(change);
+          break;
+      }
+    } else {
         throw new Error(`Unknown action type: ${change.actionType}`);
     }
   }
@@ -393,7 +517,7 @@ class SyncService {
   // Handle conflicts between local and server data
   async handleConflict(entityId: string, serverData: any, conflictType: string) {
     const lists = await storage.getLists();
-    const localList = lists.find(list => list._id === entityId);
+    const localList = lists?.find(list => list._id === entityId);
 
     if (!localList) {
       return serverData;
@@ -416,7 +540,259 @@ class SyncService {
     this.stopCleanupInterval();
     this.idMappings.clear();
   }
+
+  // Process list item addition
+  private async processAddListItems(change: PendingChange) {
+    try {
+      console.log('[Sync] Processing add items:', {
+        listId: change.entityId,
+        items: change.data.items,
+        tempIds: change.data.items.map((i: ListItem) => i._id)
+      });
+
+      const response = await api.post(API_CONFIG.ENDPOINTS.LISTS.ITEMS.BASE(change.entityId), change.data);
+      const newItems = response.data;
+      
+      console.log('[Sync] Server response items:', {
+        newItems,
+        newItemIds: newItems.map((i: ListItem) => i._id)
+      });
+      
+      const currentLists = await storage.getLists() || [];
+      const targetList = currentLists.find(list => list._id === change.entityId);
+      
+      if (targetList) {
+        console.log('[Sync] Current list state before update:', {
+          listId: targetList._id,
+          itemCount: targetList.items.length,
+          itemIds: targetList.items.map((i: ListItem) => i._id)
+        });
+
+        // Replace temporary items with server response
+        targetList.items = [
+          ...targetList.items.filter((item: ListItem) => 
+            !change.data.items.some((temp: ListItem) => temp._id === item._id)
+          ),
+          ...newItems
+        ];
+
+        console.log('[Sync] Updated list state:', {
+          listId: targetList._id,
+          itemCount: targetList.items.length,
+          itemIds: targetList.items.map((i: ListItem) => i._id)
+        });
+
+        await storage.saveLists(currentLists.map(list =>
+          list._id === change.entityId ? targetList : list
+        ));
+
+        // Update Redux store with the new items
+        console.log('[Sync] Dispatching store update with list:', {
+          listId: targetList._id,
+          itemCount: targetList.items.length,
+          itemIds: targetList.items.map((i: ListItem) => i._id)
+        });
+
+        store.dispatch(updateListInStore({
+          ...targetList,
+          items: targetList.items
+        }));
+
+        // Fetch fresh lists to ensure UI is up to date
+        console.log('[Sync] Fetching fresh lists after sync');
+        store.dispatch(fetchLists());
+      }
+
+      await databaseService.removePendingChange(change.id);
+      console.log('[Sync] Add items process completed');
+    } catch (error) {
+      console.error('[Sync] Error processing add items:', error);
+      throw error;
+    }
+  }
+
+  // Process list item update
+  private async processUpdateListItem(change: PendingChange) {
+    try {
+      const { itemId, updates } = change.data;
+      
+      console.log('[Sync] Processing update item:', {
+        listId: change.entityId,
+        itemId,
+        updates,
+        isTemp: itemId.startsWith('temp_')
+      });
+
+      // If the item has a temporary ID, just update it in local storage
+      if (itemId.startsWith('temp_')) {
+        console.log('[Sync] Handling temporary item update');
+        const currentLists = await storage.getLists() || [];
+        const targetList = currentLists.find(list => list._id === change.entityId);
+        
+        if (targetList) {
+          console.log('[Sync] Current list state before update:', {
+            listId: targetList._id,
+            itemCount: targetList.items.length,
+            itemIds: targetList.items.map((i: ListItem) => i._id)
+          });
+
+          targetList.items = targetList.items.map((item: ListItem) =>
+            item._id === itemId ? { ...item, ...updates } : item
+          );
+
+          console.log('[Sync] Updated list state:', {
+            listId: targetList._id,
+            itemCount: targetList.items.length,
+            itemIds: targetList.items.map((i: ListItem) => i._id)
+          });
+
+          await storage.saveLists(currentLists.map(list =>
+            list._id === change.entityId ? targetList : list
+          ));
+          console.log('[Sync] Saved updated list to storage');
+        }
+      } else {
+        console.log('[Sync] Handling non-temporary item update');
+        // Only send update request to server for non-temporary items
+        const response = await api.patch(API_CONFIG.ENDPOINTS.LISTS.ITEMS.SINGLE(change.entityId, itemId), updates);
+        const updatedItem = response.data;
+
+        console.log('[Sync] Server response:', {
+          itemId: updatedItem._id,
+          updates: updatedItem
+        });
+
+        const currentLists = await storage.getLists() || [];
+        const targetList = currentLists.find(list => list._id === change.entityId);
+        
+        if (targetList) {
+          console.log('[Sync] Current list state before update:', {
+            listId: targetList._id,
+            itemCount: targetList.items.length,
+            itemIds: targetList.items.map((i: ListItem) => i._id)
+          });
+
+          targetList.items = targetList.items.map((item: ListItem) =>
+            item._id === itemId ? updatedItem : item
+          );
+
+          console.log('[Sync] Updated list state:', {
+            listId: targetList._id,
+            itemCount: targetList.items.length,
+            itemIds: targetList.items.map((i: ListItem) => i._id)
+          });
+
+          await storage.saveLists(currentLists.map(list =>
+            list._id === change.entityId ? targetList : list
+          ));
+          console.log('[Sync] Saved updated list to storage');
+        }
+      }
+
+      await databaseService.removePendingChange(change.id);
+      console.log('[Sync] Update item process completed');
+    } catch (error) {
+      console.error('[Sync] Error processing update item:', error);
+      throw error;
+    }
+  }
+
+  // Process list item deletion
+  private async processDeleteListItem(change: PendingChange) {
+    try {
+      const { itemId } = change.data;
+      
+      // If the item has a temporary ID, just remove it from local storage
+      if (itemId.startsWith('temp_')) {
+        const currentLists = await storage.getLists() || [];
+        const targetList = currentLists.find(list => list._id === change.entityId);
+        
+        if (targetList) {
+          targetList.items = targetList.items.filter((item: ListItem) => item._id !== itemId);
+          await storage.saveLists(currentLists.map(list =>
+            list._id === change.entityId ? targetList : list
+          ));
+        }
+      } else {
+        // Only send delete request to server for non-temporary items
+        await api.delete(API_CONFIG.ENDPOINTS.LISTS.ITEMS.SINGLE(change.entityId, itemId));
+      }
+
+      await databaseService.removePendingChange(change.id);
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Process list item reordering
+  private async processReorderListItem(change: PendingChange) {
+    try {
+      const { itemId, newPosition } = change.data;
+      const response = await api.patch(API_CONFIG.ENDPOINTS.LISTS.ITEMS.REORDER(change.entityId, itemId), {
+        newPosition
+      });
+      const updatedItems = response.data;
+
+      const currentLists = await storage.getLists() || [];
+      const targetList = currentLists.find(list => list._id === change.entityId);
+      
+      if (targetList) {
+        targetList.items = updatedItems;
+        await storage.saveLists(currentLists.map(list =>
+          list._id === change.entityId ? targetList : list
+        ));
+      }
+
+      await databaseService.removePendingChange(change.id);
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Process list sharing
+  private async processShareList(change: PendingChange) {
+    try {
+      const actualId = this.getActualId(change.entityId);
+      const response = await api.post(`${API_CONFIG.ENDPOINTS.LISTS.SHARE(actualId)}`, change.data);
+      
+      const currentLists = await storage.getLists() || [];
+      const targetList = currentLists.find(list => list._id === change.entityId);
+      
+      if (targetList) {
+        targetList.sharedWith = response.data.sharedWith;
+        await storage.saveLists(currentLists.map(list =>
+          list._id === change.entityId ? targetList : list
+        ));
+      }
+
+      await databaseService.removePendingChange(change.id);
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  // Process list unsharing
+  private async processUnshareList(change: PendingChange) {
+    try {
+      const actualId = this.getActualId(change.entityId);
+      const response = await api.delete(`${API_CONFIG.ENDPOINTS.LISTS.SHARE(actualId)}`, { data: change.data });
+      
+      const currentLists = await storage.getLists() || [];
+      const targetList = currentLists.find(list => list._id === change.entityId);
+      
+      if (targetList) {
+        targetList.sharedWith = response.data.sharedWith;
+        await storage.saveLists(currentLists.map(list =>
+          list._id === change.entityId ? targetList : list
+        ));
+      }
+
+      await databaseService.removePendingChange(change.id);
+    } catch (error) {
+      throw error;
+    }
+  }
 }
 
-// Export only the singleton instance
-export default new SyncService(); 
+const syncService = new SyncService();
+export default syncService; 

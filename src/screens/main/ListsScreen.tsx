@@ -7,6 +7,7 @@ import { theme } from '../../constants/theme';
 import { useThemeColors } from '../../constants/theme';
 import { useTheme } from '../../contexts/ThemeContext';
 import { fetchLists, createList, updateList, deleteList } from '../../store/actions/listActions';
+import { updateListItem, deleteListItem, addListItems } from '../../store/actions/listItemActions';
 import type { List } from '../../types/list';
 import { DraggableList } from '../../components/DraggableList';
 import { AppHeader } from '../../components/AppHeader';
@@ -33,7 +34,7 @@ export default function ListsScreen() {
   const colors = useThemeColors();
 
   useEffect(() => {
-    console.log('[ListsScreen] Full auth state:', auth);
+    console.log('[ListsScreen] User token:', auth.token);
   }, [auth]);
 
   useEffect(() => {
@@ -61,25 +62,22 @@ export default function ListsScreen() {
 
   useEffect(() => {
     if (networkState.lastConnectionRestored) {
-      console.log('[ListsScreen] Network connection restored, fetching lists');
-      dispatch(fetchLists());
+      console.log('[ListsScreen] Connection restored, fetching lists');
+      const lists = dispatch(fetchLists());
+      console.log('[ListsScreen] Lists fetch initiated:', lists);
     }
   }, [networkState.lastConnectionRestored, dispatch]);
 
   useEffect(() => {
-    console.log('[ListsScreen] Initial lists fetch');
     dispatch(fetchLists());
 
     // Load the previously selected list from storage
     const loadSelectedList = async () => {
       const savedListId = await storage.getSelectedList();
-      console.log('[ListsScreen] Loaded selected list from storage:', savedListId);
       if (savedListId && lists?.some((list: List) => list._id === savedListId)) {
         setSelectedList(savedListId);
-        console.log('[ListsScreen] Restored selected list:', savedListId);
       } else {
         await storage.saveSelectedList(null);
-        console.log('[ListsScreen] Cleared invalid selected list');
       }
     };
     loadSelectedList();
@@ -95,10 +93,8 @@ export default function ListsScreen() {
 
   useEffect(() => {
     if (lists?.length > 0 && !selectedList) {
-      console.log('[ListsScreen] Auto-selecting first list:', lists[0]._id);
       setSelectedList(lists[0]._id);
     } else if (lists?.length === 0) {
-      console.log('[ListsScreen] No lists available, clearing selection');
       setSelectedList(null);
       storage.saveSelectedList(null);
     }
@@ -131,56 +127,60 @@ export default function ListsScreen() {
   };
 
   const handleToggleItem = async (itemId: string) => {
-    if (!selectedList || !selectedListData) return;
+    if (!selectedList || !selectedListData) {
+      console.log('[ListsScreen] Cannot toggle item: no selected list or list data', {
+        selectedList,
+        hasListData: !!selectedListData
+      });
+      return;
+    }
 
     try {
-      console.log('[ListsScreen] Toggling item:', itemId);
-      const updatedItems = selectedListData.items.map(item => 
-        item._id === itemId ? { ...item, completed: !item.completed } : item
-      );
+      const item = selectedListData.items.find(item => item._id === itemId);
+      
+      if (!item) {
+        console.log('[ListsScreen] Item not found in list:', {
+          itemId,
+          listId: selectedList
+        });
+        return;
+      }
 
-      await dispatch(updateList({
+      await dispatch(updateListItem({
         listId: selectedList,
-        data: { items: updatedItems }
+        itemId: itemId,
+        updates: { completed: !item.completed }
       })).unwrap();
-      console.log('[ListsScreen] Item toggled successfully');
+      
     } catch (error) {
       console.error('[ListsScreen] Failed to toggle item:', error);
     }
   };
 
   const handleDeleteItem = async (itemId: string) => {
-    if (!selectedList || !selectedListData) return;
-
-    const updatedItems = selectedListData.items.filter(item => item._id !== itemId);
-
-	console.log('[ListsScreen] Deleting item:', itemId);
-	console.log('[ListsScreen] Updated items after deletion:', updatedItems);
+    if (!selectedList) return;
 
     try {
-      await dispatch(updateList({
+      await dispatch(deleteListItem({
         listId: selectedList,
-        data: { items: updatedItems }
+        itemId: itemId
       })).unwrap();
     } catch (error) {
-      console.error('Failed to delete item:', error);
+      console.error('[ListsScreen] Failed to delete item:', error);
     }
   };
 
   const handleEditItem = async (itemId: string, newText: string) => {
-    if (!selectedList || !selectedListData) return;
-
-    const updatedItems = selectedListData.items.map(item => 
-      item._id === itemId ? { ...item, text: newText } : item
-    );
+    if (!selectedList) return;
 
     try {
-      await dispatch(updateList({
+      await dispatch(updateListItem({
         listId: selectedList,
-        data: { items: updatedItems }
+        itemId: itemId,
+        updates: { text: newText }
       })).unwrap();
     } catch (error) {
-      console.error('Failed to update item:', error);
+      console.error('[ListsScreen] Failed to update item:', error);
     }
   };
 
@@ -191,43 +191,25 @@ export default function ListsScreen() {
   };
 
   const handleAddItems = async () => {
-    if (!newItems.trim() || !selectedList || !selectedListData) return;
+    if (!newItems.trim() || !selectedList) return;
 
     // Split items by commas or new lines
     const items = newItems
       .split(/[,\n]/)
       .map(item => item.trim())
-      .filter(item => item.length > 0);
+      .filter(item => item.length > 0)
+      .map(text => ({
+        text,
+        completed: false
+      }));
 
     if (items.length === 0) return;
 
     try {
-      // Add all items at once with temporary IDs for offline tracking
-      const newItemsList = items.map(itemText => ({
-        _id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        text: itemText,
-        completed: false,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      }));
-
-      // Append new items to existing ones
-      const updatedItems = [...selectedListData.items, ...newItemsList];
-      
-      console.log('[ListsScreen] Adding items:', {
-        newItems: newItemsList,
-        isConnected: networkState.isConnected,
-        isInternetReachable: networkState.isInternetReachable,
-        currentItems: selectedListData.items.length,
-        updatedItemsCount: updatedItems.length
-      });
-
-      await dispatch(updateList({
+      await dispatch(addListItems({
         listId: selectedList,
-        data: { items: updatedItems }
+        items
       })).unwrap();
-
-      console.log('[ListsScreen] Items added successfully');
       setNewItems('');
     } catch (error) {
       console.error('[ListsScreen] Failed to add items:', error);

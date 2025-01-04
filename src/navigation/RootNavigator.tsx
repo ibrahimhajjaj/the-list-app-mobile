@@ -46,8 +46,6 @@ export function RootNavigator() {
       }
       
       initializationRef.current = true;
-      console.log('[RootNavigator] Initializing app...');
-
       try {
         // Check permissions
         const permissionsStatus = await checkPermissions();
@@ -58,7 +56,6 @@ export function RootNavigator() {
 
         // Load stored token regardless of permissions
         const storedToken = await storage.getAuthToken();
-        console.log('[RootNavigator] Stored token:', !!storedToken);
         
         if (storedToken) {
           try {

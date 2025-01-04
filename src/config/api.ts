@@ -15,6 +15,11 @@ export const API_CONFIG = {
     LISTS: {
       BASE: '/lists',
       SHARE: (listId: string) => `/lists/${listId}/share`,
+      ITEMS: {
+        BASE: (listId: string) => `/lists/${listId}/items`,
+        SINGLE: (listId: string, itemId: string) => `/lists/${listId}/items/${itemId}`,
+        REORDER: (listId: string, itemId: string) => `/lists/${listId}/items/${itemId}/reorder`,
+      }
     },
     DEBUG: {
       CLEANUP_LISTS: '/debug/cleanup-lists'

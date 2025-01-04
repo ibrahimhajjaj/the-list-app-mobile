@@ -1,20 +1,15 @@
-import { createAsyncThunk } from '@reduxjs/toolkit';
+import { createAsyncThunk, createAction } from '@reduxjs/toolkit';
 import api from '../../services/api';
 import { storage } from '../../services/storage';
 import { databaseService } from '../../services/database';
 import { store } from '../index';
-import type { List, ListItem, AllowedListUpdates } from '../../types/list';
-import { syncService } from '../../services/sync';
-import { 
-  DeleteListItemPayload, 
-  ShareListPayload, 
-  UpdateListItemPayload 
-} from '../types/listActionTypes';
+import type { List } from '../../types/list';
+import { ACTION_TYPES } from '../../types/list';
+import syncService from '../../services/sync';
+import { ShareListPayload } from '../types/listActionTypes';
 
 function generateTempId(): string {
-  const timestamp = Date.now();
-  const random = Math.random().toString(36).substring(2, 15);
-  return `temp_${timestamp}_${random}`;
+  return `temp_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
 }
 
 export const fetchLists = createAsyncThunk(
@@ -76,7 +71,7 @@ export const createList = createAsyncThunk(
 
       // Handle offline creation
       if (!isConnected) {
-        await syncService.addPendingChange('CREATE_LIST', tempId, data);
+        await syncService.addPendingChange(ACTION_TYPES.CREATE_LIST, tempId, data);
         return tempList;
       }
 
@@ -98,13 +93,25 @@ export const createList = createAsyncThunk(
   }
 );
 
+interface AllowedListUpdates {
+  title?: string;
+  description?: string;
+  category?: string;
+}
+
 function validateListUpdates(data: Partial<List>): AllowedListUpdates {
   const allowedUpdates: AllowedListUpdates = {};
   
-  // Only include allowed fields
-  if ('title' in data) allowedUpdates.title = data.title;
-  if ('items' in data) allowedUpdates.items = data.items;
-  if ('category' in data) allowedUpdates.category = data.category;
+  // Only include allowed fields with proper type assertions
+  if ('title' in data && typeof data.title === 'string') {
+    allowedUpdates.title = data.title;
+  }
+  if ('description' in data && typeof data.description === 'string') {
+    allowedUpdates.description = data.description;
+  }
+  if ('category' in data && typeof data.category === 'string') {
+    allowedUpdates.category = data.category;
+  }
 
   return allowedUpdates;
 }
@@ -139,7 +146,7 @@ export const updateList = createAsyncThunk(
 
       // Handle offline updates
       if (!isConnected) {
-        await syncService.addPendingChange('UPDATE_LIST', listId, validatedUpdates);
+        await syncService.addPendingChange(ACTION_TYPES.UPDATE_LIST, listId, validatedUpdates);
         return updatedList;
       }
 
@@ -187,7 +194,7 @@ export const deleteList = createAsyncThunk(
 
       if (!isConnected) {
         // Queue for sync when online
-        await syncService.addPendingChange('DELETE_LIST', listId, {});
+        await syncService.addPendingChange(ACTION_TYPES.DELETE_LIST, listId, {});
         return listId;
       }
 
@@ -208,7 +215,7 @@ export const shareList = createAsyncThunk<List | null, ShareListPayload>(
       const isConnected = state.network.isConnected && state.network.isInternetReachable;
 
       if (!isConnected) {
-        await syncService.addPendingChange('SHARE_LIST', listId, data);
+        await syncService.addPendingChange(ACTION_TYPES.SHARE_LIST, listId, data);
         return null;
       }
 
@@ -236,7 +243,7 @@ export const unshareList = createAsyncThunk<List | null, { listId: string; email
       const isConnected = state.network.isConnected && state.network.isInternetReachable;
 
       if (!isConnected) {
-        await syncService.addPendingChange('UNSHARE_LIST', listId, { email });
+        await syncService.addPendingChange(ACTION_TYPES.UNSHARE_LIST, listId, { email });
         return null;
       }
 
@@ -256,120 +263,50 @@ export const unshareList = createAsyncThunk<List | null, { listId: string; email
   }
 );
 
-export const fetchListById = createAsyncThunk<List, string>(
+export const fetchListById = createAsyncThunk(
   'lists/fetchListById',
-  async (listId, { rejectWithValue }) => {
+  async (listId: string, { rejectWithValue }) => {
     try {
       const state = store.getState();
       const isConnected = state.network.isConnected && state.network.isInternetReachable;
 
-      // Try to get list from storage first
-      const storedLists = await storage.getLists() || [];
-      const storedList = storedLists.find(list => list._id === listId);
-      
+      // If offline, return stored list
       if (!isConnected) {
-        if (!storedList) {
-          return rejectWithValue('List not found in offline storage');
+        const storedLists = await storage.getLists();
+        const list = storedLists?.find(l => l._id === listId);
+        if (!list) {
+          return rejectWithValue('List not found in local storage');
         }
-        return storedList;
+        return list;
       }
 
       // If online, fetch from API and update storage
-      const response = await api.get<List>(`/lists/${listId}`);
-      
-      // Update the list in stored lists
-      const updatedLists = storedLists.map(list =>
-        list._id === listId ? response.data : list
+      const response = await api.get(`/lists/${listId}`);
+      const list = response.data;
+
+      // Update the list in storage
+      const storedLists = await storage.getLists() || [];
+      const updatedLists = storedLists.map(l => 
+        l._id === listId ? list : l
       );
       await storage.saveLists(updatedLists);
 
-      return response.data;
+      return list;
     } catch (error: any) {
+      // On error, try to return stored list
+      try {
+        const storedLists = await storage.getLists();
+        const list = storedLists?.find(l => l._id === listId);
+        if (list) {
+          return list;
+        }
+      } catch (storageError) {
+        // If both API and storage fail, return error
+      }
       return rejectWithValue(error.response?.data?.message || 'Failed to fetch list');
     }
   }
 );
 
-export const updateListItem = createAsyncThunk<List, UpdateListItemPayload>(
-  'lists/updateListItem',
-  async ({ listId, itemId, updates }, { rejectWithValue }) => {
-    try {
-      const state = store.getState();
-      const isConnected = state.network.isConnected && state.network.isInternetReachable;
-
-      // Get current list from storage
-      const storedLists = await storage.getLists() || [];
-      const currentList = storedLists.find(list => list._id === listId);
-      
-      if (!currentList) {
-        return rejectWithValue('List not found');
-      }
-
-      // Update locally first
-      const updatedList = {
-        ...currentList,
-        items: currentList.items.map((item: ListItem) =>
-          item._id === itemId ? { ...item, ...updates } : item
-        ),
-        updatedAt: new Date().toISOString()
-      };
-
-      // Save to local storage
-      const updatedLists = storedLists.map(list =>
-        list._id === listId ? updatedList : list
-      );
-      await storage.saveLists(updatedLists);
-
-      if (!isConnected) {
-        await syncService.addPendingChange('UPDATE_LIST', listId, { items: updatedList.items });
-        return updatedList;
-      }
-
-      const response = await api.patch<List>(`/lists/${listId}/items/${itemId}`, updates);
-      return response.data;
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to update list item');
-    }
-  }
-);
-
-export const deleteListItem = createAsyncThunk<DeleteListItemPayload, DeleteListItemPayload>(
-  'lists/deleteListItem',
-  async ({ listId, itemId }, { rejectWithValue }) => {
-    try {
-      const state = store.getState();
-      const isConnected = state.network.isConnected && state.network.isInternetReachable;
-
-      // Get current list from storage
-      const storedLists = await storage.getLists() || [];
-      const currentList = storedLists.find(list => list._id === listId);
-      
-      if (!currentList) {
-        return rejectWithValue('List not found');
-      }
-
-      // Update locally first
-      const updatedList = {
-        ...currentList,
-        items: currentList.items.filter((item: ListItem) => item._id !== itemId),
-        updatedAt: new Date().toISOString()
-      };
-
-      // Save to local storage
-      const updatedLists = storedLists.map(list =>
-        list._id === listId ? updatedList : list
-      );
-      await storage.saveLists(updatedLists);
-
-      if (!isConnected) {
-        await syncService.addPendingChange('UPDATE_LIST', listId, { items: updatedList.items });
-        return { listId, itemId };
-      }
-
-      await api.delete(`/lists/${listId}/items/${itemId}`);
-      return { listId, itemId };
-    } catch (error: any) {
-      return rejectWithValue(error.response?.data?.message || 'Failed to delete list item');
-    }
-  }
-); 
+// Sync action for updating list in store during sync
+export const updateListInStore = createAction<List>('lists/updateListInStore');

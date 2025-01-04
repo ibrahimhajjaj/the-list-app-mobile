@@ -1,8 +1,23 @@
 import * as SQLite from 'expo-sqlite';
 import { Settings } from '../types/settings';
 import { ConflictDetails } from './conflictResolution';
+import { ACTION_TYPES } from '../types/list';
 
 const db = SQLite.openDatabaseSync('thelistapp.db');
+
+// Define action types for internal use
+type ListActionType = typeof ACTION_TYPES.CREATE_LIST | 
+  typeof ACTION_TYPES.UPDATE_LIST | 
+  typeof ACTION_TYPES.DELETE_LIST |
+  typeof ACTION_TYPES.SHARE_LIST |
+  typeof ACTION_TYPES.UNSHARE_LIST;
+
+type ListItemActionType = typeof ACTION_TYPES.ADD_LIST_ITEM | 
+  typeof ACTION_TYPES.UPDATE_LIST_ITEM | 
+  typeof ACTION_TYPES.DELETE_LIST_ITEM | 
+  typeof ACTION_TYPES.REORDER_LIST_ITEMS;
+
+type SyncActionType = ListActionType | ListItemActionType;
 
 class DatabaseService {
   constructor() {
@@ -253,7 +268,14 @@ class DatabaseService {
   }
 
   // Pending changes operations
-  async addPendingChange(actionType: string, entityId: string, data: any): Promise<void> {
+  async updatePendingChange(id: number, change: any): Promise<void> {
+    await db.runAsync(
+      'UPDATE pending_changes SET data = ? WHERE id = ?',
+      [JSON.stringify(change.data), id]
+    );
+  }
+
+  async addPendingChange(actionType: SyncActionType, entityId: string, data: any): Promise<void> {
     const currentList = await db.getFirstAsync<{ version: number }>(
       'SELECT version FROM lists WHERE id = ?',
       [entityId]

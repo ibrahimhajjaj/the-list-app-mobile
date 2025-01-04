@@ -8,8 +8,10 @@ export interface ListItem {
   _id: string;
   text: string;
   completed: boolean;
-  createdAt: string;
-  updatedAt: string;
+  position?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  isTemp?: boolean;
 }
 
 export interface SharedUser {
@@ -46,4 +48,19 @@ export interface ListsState {
   currentList: List | null;
   loading: boolean;
   error: string | null;
-} 
+}
+
+// Action types for sync service
+export const ACTION_TYPES = {
+  CREATE_LIST: 'CREATE_LIST',
+  UPDATE_LIST: 'UPDATE_LIST',
+  DELETE_LIST: 'DELETE_LIST',
+  SHARE_LIST: 'SHARE_LIST',
+  UNSHARE_LIST: 'UNSHARE_LIST',
+  ADD_LIST_ITEM: 'ADD_LIST_ITEM',
+  UPDATE_LIST_ITEM: 'UPDATE_LIST_ITEM',
+  DELETE_LIST_ITEM: 'DELETE_LIST_ITEM',
+  REORDER_LIST_ITEMS: 'REORDER_LIST_ITEMS'
+} as const;
+
+export type ActionType = typeof ACTION_TYPES[keyof typeof ACTION_TYPES]; 

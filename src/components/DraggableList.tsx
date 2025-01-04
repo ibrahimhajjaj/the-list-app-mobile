@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { ListItem } from './ListItem';
-import { List } from '../store/slices/listSlice';
+import type { List, ListItem as ListItemType } from '../types/list';
 import { theme } from '../constants/theme';
 
 interface Props {
@@ -14,18 +14,26 @@ interface Props {
 export function DraggableList({ items, onToggle, onDelete, onEdit }: Props) {
   return (
     <View style={styles.container}>
-      {items.map((item) => (
-        <ListItem
-          key={item._id || `temp_${Date.now()}`}
-          text={item.text}
-          completed={item.completed}
-          onToggle={() => item._id && onToggle(item._id)}
-          onDelete={() => item._id && onDelete(item._id)}
-          onEdit={(newText) => item._id && onEdit(item._id, newText)}
-          editButtonStyle={theme.buttons.outline}
-          deleteButtonStyle={theme.buttons.destructive}
-        />
-      ))}
+      {items.map((item: ListItemType) => {
+        return (
+          <ListItem
+            key={item._id}
+            text={item.text}
+            completed={item.completed}
+            onToggle={() => {
+              onToggle(item._id);
+            }}
+            onDelete={() => {
+              onDelete(item._id);
+            }}
+            onEdit={(newText) => {
+              onEdit(item._id, newText);
+            }}
+            editButtonStyle={theme.buttons.outline}
+            deleteButtonStyle={theme.buttons.destructive}
+          />
+        );
+      })}
     </View>
   );
 }

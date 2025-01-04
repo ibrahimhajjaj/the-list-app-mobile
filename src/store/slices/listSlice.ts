@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { List } from '../../types/list';
+import { List, ListItem } from '../../types/list';
 import { 
   fetchLists, 
   createList, 
@@ -7,10 +7,14 @@ import {
   deleteList,
   shareList,
   unshareList,
+  fetchListById,
+  updateListInStore
+} from '../actions/listActions';
+import {
   updateListItem,
   deleteListItem,
-  fetchListById
-} from '../actions/listActions';
+  addListItems
+} from '../actions/listItemActions';
 import { DeleteListItemPayload } from '../types/listActionTypes';
 
 interface ListState {
@@ -34,14 +38,14 @@ const listSlice = createSlice({
     setLists: (state, action: PayloadAction<List[]>) => {
       state.lists = action.payload.map(list => ({
         ...list,
-        shared: list.sharedWith.length > 0
+        shared: Boolean(list.sharedWith?.length)
       }));
       state.error = null;
     },
     setCurrentList: (state, action: PayloadAction<List>) => {
       state.currentList = {
         ...action.payload,
-        shared: action.payload.sharedWith.length > 0
+        shared: Boolean(action.payload.sharedWith?.length)
       };
       state.error = null;
     },
@@ -60,16 +64,37 @@ const listSlice = createSlice({
     // Fetch Lists
     builder
       .addCase(fetchLists.pending, (state) => {
+        console.log('[ListSlice] Fetching lists...');
         state.loading = true;
         state.error = null;
       })
       .addCase(fetchLists.fulfilled, (state, action: PayloadAction<List[]>) => {
+        console.log('[ListSlice] Lists fetched:', {
+          count: action.payload.length,
+          listIds: action.payload.map(l => l._id)
+        });
         state.lists = action.payload.map(list => ({
           ...list,
-          shared: list.sharedWith.length > 0
+          shared: Boolean(list.sharedWith?.length)
         }));
         state.loading = false;
         state.error = null;
+
+        // If we have a current list, update it with fresh data
+        if (state.currentList) {
+          const updatedCurrentList = action.payload.find(l => l._id === state.currentList?._id);
+          if (updatedCurrentList) {
+            state.currentList = {
+              ...updatedCurrentList,
+              shared: Boolean(updatedCurrentList.sharedWith?.length)
+            };
+            console.log('[ListSlice] Updated current list after fetch:', {
+              listId: state.currentList._id,
+              itemCount: state.currentList.items.length,
+              itemIds: state.currentList.items.map(i => i._id)
+            });
+          }
+        }
       })
       .addCase(fetchLists.rejected, (state, action) => {
         state.loading = false;
@@ -85,7 +110,7 @@ const listSlice = createSlice({
       .addCase(createList.fulfilled, (state, action: PayloadAction<List>) => {
         const newList = {
           ...action.payload,
-          shared: action.payload.sharedWith.length > 0
+          shared: Boolean(action.payload.sharedWith?.length)
         };
         state.lists.push(newList);
         state.loading = false;
@@ -105,7 +130,7 @@ const listSlice = createSlice({
       .addCase(updateList.fulfilled, (state, action: PayloadAction<List>) => {
         const updatedList = {
           ...action.payload,
-          shared: action.payload.sharedWith.length > 0
+          shared: Boolean(action.payload.sharedWith?.length)
         };
         const index = state.lists.findIndex(list => list._id === updatedList._id);
         if (index !== -1) {
@@ -122,25 +147,6 @@ const listSlice = createSlice({
         state.error = action.payload as string || 'Failed to update list';
       });
 
-    // Delete List
-    builder
-      .addCase(deleteList.pending, (state) => {
-        state.loading = true;
-        state.error = null;
-      })
-      .addCase(deleteList.fulfilled, (state, action: PayloadAction<string>) => {
-        state.lists = state.lists.filter(list => list._id !== action.payload);
-        if (state.currentList?._id === action.payload) {
-          state.currentList = null;
-        }
-        state.loading = false;
-        state.error = null;
-      })
-      .addCase(deleteList.rejected, (state, action) => {
-        state.loading = false;
-        state.error = action.payload as string || 'Failed to delete list';
-      });
-
     // Share List
     builder
       .addCase(shareList.pending, (state) => {
@@ -151,7 +157,7 @@ const listSlice = createSlice({
         if (action.payload) {
           const updatedList = {
             ...action.payload,
-            shared: action.payload.sharedWith.length > 0
+            shared: Boolean(action.payload.sharedWith?.length)
           };
           const index = state.lists.findIndex(list => list._id === updatedList._id);
           if (index !== -1) {
@@ -179,7 +185,7 @@ const listSlice = createSlice({
         if (action.payload) {
           const updatedList = {
             ...action.payload,
-            shared: action.payload.sharedWith.length > 0
+            shared: Boolean(action.payload.sharedWith?.length)
           };
           const index = state.lists.findIndex(list => list._id === updatedList._id);
           if (index !== -1) {
@@ -203,18 +209,53 @@ const listSlice = createSlice({
         state.loading = true;
         state.error = null;
       })
-      .addCase(updateListItem.fulfilled, (state, action: PayloadAction<List>) => {
-        const updatedList = {
-          ...action.payload,
-          shared: action.payload.sharedWith.length > 0
-        };
-        const index = state.lists.findIndex(list => list._id === updatedList._id);
-        if (index !== -1) {
-          state.lists[index] = updatedList;
+      .addCase(updateListItem.fulfilled, (state, action) => {
+        const { listId, item, itemId, updates } = action.payload;
+        const listIndex = state.lists.findIndex(list => list._id === listId);
+        
+        if (listIndex !== -1) {
+          const list = state.lists[listIndex];
+          // Handle both server response and offline updates
+          if (item) {
+            // Server response case
+            const itemIndex = list.items.findIndex(i => i._id === item._id);
+            if (itemIndex !== -1) {
+              list.items[itemIndex] = item;
+            }
+          } else if (itemId && updates) {
+            // Offline update case
+            const itemIndex = list.items.findIndex(i => i._id === itemId);
+            if (itemIndex !== -1) {
+              list.items[itemIndex] = {
+                ...list.items[itemIndex],
+                ...updates,
+                updatedAt: new Date().toISOString()
+              };
+            }
+          }
         }
-        if (state.currentList?._id === updatedList._id) {
-          state.currentList = updatedList;
+
+        // Update currentList if it's the active list
+        if (state.currentList?._id === listId) {
+          if (item) {
+            // Server response case
+            const itemIndex = state.currentList.items.findIndex(i => i._id === item._id);
+            if (itemIndex !== -1) {
+              state.currentList.items[itemIndex] = item;
+            }
+          } else if (itemId && updates) {
+            // Offline update case
+            const itemIndex = state.currentList.items.findIndex(i => i._id === itemId);
+            if (itemIndex !== -1) {
+              state.currentList.items[itemIndex] = {
+                ...state.currentList.items[itemIndex],
+                ...updates,
+                updatedAt: new Date().toISOString()
+              };
+            }
+          }
         }
+
         state.loading = false;
         state.error = null;
       })
@@ -251,10 +292,14 @@ const listSlice = createSlice({
         state.error = null;
       })
       .addCase(fetchListById.fulfilled, (state, action: PayloadAction<List>) => {
-        state.currentList = action.payload;
-        const index = state.lists.findIndex(list => list._id === action.payload._id);
+        const fetchedList = {
+          ...action.payload,
+          shared: Boolean(action.payload.sharedWith?.length)
+        };
+        state.currentList = fetchedList;
+        const index = state.lists.findIndex(list => list._id === fetchedList._id);
         if (index !== -1) {
-          state.lists[index] = action.payload;
+          state.lists[index] = fetchedList;
         }
         state.loading = false;
         state.error = null;
@@ -262,6 +307,70 @@ const listSlice = createSlice({
       .addCase(fetchListById.rejected, (state, action) => {
         state.loading = false;
         state.error = action.payload as string || 'Failed to fetch list';
+      });
+
+    // Add List Items
+    builder
+      .addCase(addListItems.pending, (state) => {
+        state.loading = true;
+        state.error = null;
+      })
+      .addCase(addListItems.fulfilled, (state, action) => {
+        const { listId, items } = action.payload;
+        const listIndex = state.lists.findIndex(list => list._id === listId);
+        if (listIndex !== -1) {
+          state.lists[listIndex].items = [
+            ...state.lists[listIndex].items,
+            ...items
+          ];
+        }
+        if (state.currentList?._id === listId) {
+          state.currentList.items = [
+            ...state.currentList.items,
+            ...items
+          ];
+        }
+        state.loading = false;
+        state.error = null;
+      })
+      .addCase(addListItems.rejected, (state, action) => {
+        state.loading = false;
+        state.error = action.payload as string || 'Failed to add list items';
+      });
+
+    // Update List In Store (for sync updates)
+    builder
+      .addCase(updateListInStore, (state, action: PayloadAction<List>) => {
+        console.log('[ListSlice] Updating list in store:', {
+          listId: action.payload._id,
+          itemCount: action.payload.items.length,
+          itemIds: action.payload.items.map(i => i._id)
+        });
+
+        const updatedList = {
+          ...action.payload,
+          shared: Boolean(action.payload.sharedWith?.length)
+        };
+        const index = state.lists.findIndex(list => list._id === updatedList._id);
+        if (index !== -1) {
+          state.lists[index] = updatedList;
+          console.log('[ListSlice] Updated lists array, new state:', {
+            listId: updatedList._id,
+            itemCount: updatedList.items.length,
+            itemIds: updatedList.items.map(i => i._id),
+            totalLists: state.lists.length
+          });
+        }
+        if (state.currentList?._id === updatedList._id) {
+          state.currentList = updatedList;
+          console.log('[ListSlice] Updated current list:', {
+            listId: updatedList._id,
+            itemCount: updatedList.items.length,
+            itemIds: updatedList.items.map(i => i._id)
+          });
+        }
+
+        console.log('[ListSlice] Store update complete');
       });
   },
 });
