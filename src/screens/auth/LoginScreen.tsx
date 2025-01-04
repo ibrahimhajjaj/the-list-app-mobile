@@ -29,22 +29,11 @@ export default function LoginScreen({ navigation }: Props) {
 
   // Clear any auth errors when component mounts or unmounts
   useEffect(() => {
-    console.log('[Login] Component mounted, clearing errors');
     dispatch(clearError());
     return () => {
-      console.log('[Login] Component unmounting, clearing errors');
       dispatch(clearError());
     };
   }, [dispatch]);
-
-  useEffect(() => {
-    console.log('[Login] Auth state changed:', {
-      loading,
-      hasError: !!error,
-      hasToken: !!token,
-      hasUser: !!user
-    });
-  }, [loading, error, token, user]);
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -55,9 +44,7 @@ export default function LoginScreen({ navigation }: Props) {
     console.log('[Login] Attempting login with email:', email);
     try {
       const resultAction = await dispatch(loginUser({ email, password })).unwrap();
-      if (loginUser.fulfilled.match(resultAction)) {
-        console.log('[Login] Login successful, user:', resultAction.user?._id);
-      }
+      console.log('[Login] Login successful, user:', resultAction.user?._id);
     } catch (err: any) {
       console.error('[Login] Login failed:', {
         error: err?.message,

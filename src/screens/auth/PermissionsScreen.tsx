@@ -8,6 +8,7 @@ import { theme } from '../../constants/theme';
 import { useThemeColors } from '../../constants/theme';
 import { checkPermissions } from '../../utils/permissions';
 import type { AuthStackScreenProps } from '../../navigation/types';
+import { useAppSelector } from '../../hooks/redux';
 
 type PermissionStatus = 'pending' | 'granted' | 'denied';
 
@@ -17,6 +18,7 @@ export function PermissionsScreen() {
   const [notificationStatus, setNotificationStatus] = useState<PermissionStatus>('pending');
   const [batteryOptStatus, setBatteryOptStatus] = useState<PermissionStatus>('pending');
   const [isRequestingBatteryOpt, setIsRequestingBatteryOpt] = useState(false);
+  const { isAuthenticated } = useAppSelector((state) => state.auth);
 
   useEffect(() => {
     checkAndNavigate();
@@ -29,9 +31,12 @@ export function PermissionsScreen() {
     setNotificationStatus(permissions.notifications ? 'granted' : 'denied');
     setBatteryOptStatus(permissions.batteryOptimization ? 'granted' : 'denied');
     
-    // If all permissions are granted, navigate to login
+    // If all permissions are granted, navigate appropriately
     if (permissions.notifications && permissions.batteryOptimization) {
-      navigation.replace('Login');
+      // If user is already authenticated, don't navigate at all
+      if (!isAuthenticated) {
+        navigation.replace('Login');
+      }
       return;
     }
   };
@@ -88,7 +93,10 @@ export function PermissionsScreen() {
   };
 
   const handleContinue = () => {
-    navigation.navigate('Login');
+    // If authenticated, don't navigate back to login
+    if (!isAuthenticated) {
+      navigation.navigate('Login');
+    }
   };
 
   return (

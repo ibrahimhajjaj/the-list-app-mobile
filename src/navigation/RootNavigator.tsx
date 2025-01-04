@@ -108,7 +108,8 @@ export function RootNavigator() {
     return <SplashScreen onReady={handleSplashComplete} />;
   }
 
-  const shouldShowAuth = !isAuthenticated || needsPermissions;
+  // Only show auth if not authenticated, permissions shouldn't block access
+  const shouldShowAuth = !isAuthenticated;
   
   return (
     <View style={{ flex: 1 }}>
