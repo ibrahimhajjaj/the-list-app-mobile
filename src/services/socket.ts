@@ -645,10 +645,89 @@ class SocketService {
       }
     });
 
-    this._socket.on('listUpdated', (data: { type: string; listId: string; data: any; updatedBy: any; changes: any }) => {
-      if (this.subscribedLists.has(data.listId)) {
-        store.dispatch(updateListInStore(data.data));
+    this._socket.on('listUpdated', (data: { type: string; listId: string; data: any; items?: any[]; item?: any; itemId?: string; updatedBy: any }) => {
+      if (!data.listId) {
+        console.error('[Socket] Invalid listUpdated event: missing listId');
+        return;
       }
+
+      if (!this.subscribedLists.has(data.listId)) {
+        return;
+      }
+
+      // Get current list from store
+      const currentState = store.getState();
+      const currentList = currentState.lists.lists.find(list => list._id === data.listId);
+      
+      if (!currentList) {
+        console.error('[Socket] List not found in store:', data.listId);
+        return;
+      }
+
+      // Create a new list object based on the update type
+      let updatedList;
+      
+      switch (data.type) {
+        case 'items_added':
+          if (!Array.isArray(data.items)) {
+            console.error('[Socket] Invalid items_added event: items not an array');
+            return;
+          }
+          updatedList = {
+            ...currentList,
+            items: [...currentList.items, ...data.items]
+          };
+          break;
+
+        case 'item_updated':
+          if (!data.item || !data.item._id) {
+            console.error('[Socket] Invalid item_updated event: missing item data');
+            return;
+          }
+          updatedList = {
+            ...currentList,
+            items: currentList.items.map(item => 
+              item._id === data.item._id ? data.item : item
+            )
+          };
+          break;
+
+        case 'item_deleted':
+          if (!data.itemId) {
+            console.error('[Socket] Invalid item_deleted event: missing itemId');
+            return;
+          }
+          updatedList = {
+            ...currentList,
+            items: currentList.items.filter(item => item._id !== data.itemId)
+          };
+          break;
+
+        case 'items_reordered':
+          if (!Array.isArray(data.items)) {
+            console.error('[Socket] Invalid items_reordered event: items not an array');
+            return;
+          }
+          updatedList = {
+            ...currentList,
+            items: data.items
+          };
+          break;
+
+        case 'list_updated':
+          if (!data.data) {
+            console.error('[Socket] Invalid list_updated event: missing data');
+            return;
+          }
+          updatedList = data.data;
+          break;
+
+        default:
+          console.error('[Socket] Unknown update type:', data.type);
+          return;
+      }
+
+      store.dispatch(updateListInStore(updatedList));
     });
 
     this._socket.on('pong', () => {

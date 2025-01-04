@@ -33,7 +33,9 @@ export default function ListsScreen() {
   const [listToDelete, setListToDelete] = useState<string | null>(null);
   const colors = useThemeColors();
 
+  
   useEffect(() => {
+	console.log("[ListsScreen] Auth token: ", auth.token);
     dispatch(fetchLists());
   }, [networkState.lastConnectionRestored]);
 
