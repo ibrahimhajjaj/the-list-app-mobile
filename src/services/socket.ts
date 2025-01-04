@@ -84,32 +84,21 @@ class SocketService {
       }));
 
       try {
-        const isNetworkAvailable = store.getState().network.isConnected &&  store.getState().network.isInternetReachable;
+        const isNetworkAvailable = store.getState().network.isConnected && store.getState().network.isInternetReachable;
         
         if (isNetworkAvailable) {
           await this.connect(this.currentToken);
+          
+          // Only try to register push notifications after successful connection
+          if (this._isConnected && !this.notificationsInitialized) {
+            await this.initializeNotifications();
+          }
         } else {
           await this.handleReconnect();
         }
       } catch (error) {
         await this.handleReconnect();
       }
-    }
-
-    // Initialize notifications if not already done
-    if (!this.notificationsInitialized) {
-      await this.initializeNotifications();
-    }
-
-    // Ensure push notifications are registered
-    try {
-      const token = await notificationService.registerForPushNotifications();
-      if (token) {
-        this.notificationsInitialized = true;
-      } else {
-      }
-    } catch (error) {
-      console.error('[Socket] Failed to register push notifications in foreground:', error);
     }
   }
 

@@ -2,6 +2,8 @@ import { API_CONFIG } from '../config/api';
 import { storage } from './storage';
 import { authApi } from './api';
 import type { AuthResponse } from '../types/auth';
+import { notificationService } from './notificationService';
+import { loggerService } from './loggerService';
 
 export const authService = {
   async getStoredToken(): Promise<string | null> {
@@ -71,12 +73,22 @@ export const authService = {
   async login(email: string, password: string): Promise<AuthResponse> {
     try {
       const response = await authApi.post<AuthResponse>(API_CONFIG.ENDPOINTS.AUTH.LOGIN, { email, password });
-      const data = response.data;
-      await this.setToken(data.token);
-      await storage.saveUserData(data.user);
-      return data;
-    } catch (error: any) {
-      console.error('[Auth] Login failed:', error.message);
+      const { token, user } = response.data;
+      
+      await this.setToken(token);
+      await storage.saveUserData(user);
+      
+      // Initialize push notifications after successful login
+      try {
+        await notificationService.initialize();
+        await notificationService.registerForPushNotifications();
+      } catch (error) {
+        await loggerService.logPushNotificationError('Failed to register push notifications after login', error);
+      }
+
+      return response.data;
+    } catch (error) {
+      console.error('[Login] Login failed:', error);
       throw error;
     }
   },

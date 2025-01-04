@@ -34,18 +34,57 @@ export default function ListsScreen() {
   const colors = useThemeColors();
 
   useEffect(() => {
-    console.log('[ListsScreen] User token:', auth.token);
-  }, [auth]);
+    dispatch(fetchLists());
+  }, [networkState.lastConnectionRestored]);
 
+  // Handle list selection
   useEffect(() => {
-	console.log('[ListsScreen] Selected list:', selectedList);
+    const loadSelectedList = async () => {
+      const savedListId = await storage.getSelectedList();
+      
+      if (!lists?.length) {
+        // No lists available, only clear selection if we currently have one
+        if (selectedList) {
+          setSelectedList(null);
+          await storage.saveSelectedList(null);
+        }
+        return;
+      }
+
+      // Only proceed if we need to change the selection
+      if (selectedList && lists.some(list => list._id === selectedList)) {
+        return;
+      }
+
+      if (savedListId && lists.some((list: List) => list._id === savedListId)) {
+        // Use saved list if it exists
+        setSelectedList(savedListId);
+      } else {
+        // Auto-select first list if no valid saved list
+        setSelectedList(lists[0]._id);
+        await storage.saveSelectedList(lists[0]._id);
+      }
+    };
+    
+    loadSelectedList();
+
+    // Cleanup on unmount
+    return () => {
+      if (selectedList) {
+        socketService.leaveList(selectedList);
+      }
+    };
+  }, [lists]); // Only depend on lists changing
+
+  // Socket connection effect
+  useEffect(() => {
     if (!selectedList) return;
 
     socketService.joinList(selectedList);
 
     // Listen for real-time updates
     if (socketService.socket) {
-      const onListUpdated = (data: any) => {
+      const onListUpdated = () => {
         // Refresh lists to get the latest data
         dispatch(fetchLists());
       };
@@ -60,48 +99,7 @@ export default function ListsScreen() {
     }
   }, [selectedList]);
 
-  useEffect(() => {
-    if (networkState.lastConnectionRestored) {
-      console.log('[ListsScreen] Connection restored, fetching lists');
-      const lists = dispatch(fetchLists());
-      console.log('[ListsScreen] Lists fetch initiated:', lists);
-    }
-  }, [networkState.lastConnectionRestored, dispatch]);
-
-  useEffect(() => {
-    dispatch(fetchLists());
-
-    // Load the previously selected list from storage
-    const loadSelectedList = async () => {
-      const savedListId = await storage.getSelectedList();
-      if (savedListId && lists?.some((list: List) => list._id === savedListId)) {
-        setSelectedList(savedListId);
-      } else {
-        await storage.saveSelectedList(null);
-      }
-    };
-    loadSelectedList();
-
-    // Cleanup on unmount
-    return () => {
-      if (selectedList) {
-        console.log('[ListsScreen] Leaving list room:', selectedList);
-        socketService.leaveList(selectedList);
-      }
-    };
-  }, [dispatch]);
-
-  useEffect(() => {
-    if (lists?.length > 0 && !selectedList) {
-      setSelectedList(lists[0]._id);
-    } else if (lists?.length === 0) {
-      setSelectedList(null);
-      storage.saveSelectedList(null);
-    }
-  }, [lists, selectedList]);
-
   const handleListPress = async (listId: string) => {
-    console.log('[ListsScreen] Switching to list:', listId);
     if (selectedList) {
       socketService.leaveList(selectedList);
     }
@@ -109,7 +107,6 @@ export default function ListsScreen() {
     setSelectedList(listId);
     setIsDropdownOpen(false);
     await storage.saveSelectedList(listId);
-    console.log('[ListsScreen] List switch complete');
   };
 
   const handleCreateList = async () => {

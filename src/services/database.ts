@@ -20,8 +20,44 @@ type ListItemActionType = typeof ACTION_TYPES.ADD_LIST_ITEM |
 type SyncActionType = ListActionType | ListItemActionType;
 
 class DatabaseService {
+  private transactionInProgress: boolean = false;
+  private transactionQueue: Array<() => Promise<void>> = [];
+
   constructor() {
     this.initDatabase();
+  }
+
+  private async executeInTransaction<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.transactionInProgress) {
+      // Queue the operation if a transaction is in progress
+      return new Promise((resolve, reject) => {
+        this.transactionQueue.push(async () => {
+          try {
+            const result = await operation();
+            resolve(result);
+          } catch (error) {
+            reject(error);
+          }
+        });
+      });
+    }
+
+    this.transactionInProgress = true;
+    try {
+      const result = await operation();
+      
+      // Process queued operations
+      while (this.transactionQueue.length > 0) {
+        const nextOperation = this.transactionQueue.shift();
+        if (nextOperation) {
+          await nextOperation();
+        }
+      }
+      
+      return result;
+    } finally {
+      this.transactionInProgress = false;
+    }
   }
 
   private initDatabase() {
@@ -37,7 +73,7 @@ class DatabaseService {
 
       CREATE TABLE IF NOT EXISTS settings (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        key TEXT UNIQUE NOT NULL,
+        key TEXT NOT NULL UNIQUE,
         value TEXT NOT NULL
       );
 
@@ -93,141 +129,109 @@ class DatabaseService {
       CREATE INDEX IF NOT EXISTS idx_lists_server_version ON lists(server_version);
       CREATE INDEX IF NOT EXISTS idx_pending_changes_status ON pending_changes(status);
       CREATE INDEX IF NOT EXISTS idx_pending_changes_entity_id ON pending_changes(entity_id);
-      CREATE INDEX IF NOT EXISTS idx_settings_key ON settings(key);
       CREATE INDEX IF NOT EXISTS idx_id_mappings_temp_id ON id_mappings(temp_id);
       CREATE INDEX IF NOT EXISTS idx_id_mappings_actual_id ON id_mappings(actual_id);
       CREATE INDEX IF NOT EXISTS idx_id_mappings_status ON id_mappings(status);
       CREATE INDEX IF NOT EXISTS idx_conflict_history_timestamp ON conflict_history(timestamp);
       CREATE INDEX IF NOT EXISTS idx_conflict_history_type ON conflict_history(type);
     `);
+
+    // Initialize default settings if not exists
+    db.runAsync(`
+      INSERT OR IGNORE INTO settings (key, value) VALUES 
+        ('theme', 'light'),
+        ('notificationsEnabled', 'true'),
+        ('titleChangeNotifications', 'true'),
+        ('itemAddNotifications', 'true'),
+        ('itemDeleteNotifications', 'true'),
+        ('itemEditNotifications', 'true'),
+        ('itemCompleteNotifications', 'true')
+    `);
   }
 
   // Auth operations
   async saveAuthData(token: string | null, userData: any | null): Promise<void> {
     await db.execAsync('DELETE FROM auth');
-    
-    await db.runAsync(
-      'INSERT INTO auth (token, user_data) VALUES (?, ?)',
-      [token, userData ? JSON.stringify(userData) : null]
-    );
+    if (token || userData) {
+      await db.runAsync(
+        'INSERT INTO auth (token, user_data) VALUES (?, ?)',
+        [token, userData ? JSON.stringify(userData) : null]
+      );
+    }
   }
 
   async getAuthData(): Promise<{ token: string | null; userData: any | null }> {
-    const result = await db.getFirstAsync<{ token: string; user_data: string }>(
+    const result = await db.getFirstAsync<{ token: string | null; user_data: string | null }>(
       'SELECT token, user_data FROM auth LIMIT 1'
     );
-
-    if (result) {
-      return {
-        token: result.token,
-        userData: result.user_data ? JSON.parse(result.user_data) : null
-      };
-    }
-
-    return { token: null, userData: null };
+    const authData = {
+      token: result?.token || null,
+      userData: result?.user_data ? JSON.parse(result.user_data) : null
+    };
+    return authData;
   }
 
   // Settings operations
-  async saveSettings(settings: Settings): Promise<void> {
-    try {
-      // Save theme setting
-      if (settings.theme !== undefined) {
+  async saveSettings(settings: Partial<Settings>): Promise<void> {
+    await db.withTransactionAsync(async () => {
+      // Update only the provided settings
+      const entries = Object.entries(settings);
+      for (const [key, value] of entries) {
         await db.runAsync(
           'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
-          ['theme', settings.theme]
+          [key, String(value)]
         );
       }
-
-      // Save notification settings
-      const notificationSettings = {
-        notifications_enabled: settings.notificationsEnabled,
-        title_change_notifications: settings.titleChangeNotifications,
-        item_add_notifications: settings.itemAddNotifications,
-        item_delete_notifications: settings.itemDeleteNotifications,
-        item_edit_notifications: settings.itemEditNotifications,
-        item_complete_notifications: settings.itemCompleteNotifications
-      };
-
-      for (const [key, value] of Object.entries(notificationSettings)) {
-        if (value !== undefined) {
-          await db.runAsync(
-            'INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)',
-            [key, value.toString()]
-          );
-        }
-      }
-    } catch (error) {
-      console.error('[Database] Error saving settings:', error);
-      throw error;
-    }
+    });
   }
 
-  async getSettings(): Promise<Settings> {
-    try {
-      const settings: Settings = {
-        theme: 'light', // Default theme
-        notificationsEnabled: true,
-        titleChangeNotifications: true,
-        itemAddNotifications: true,
-        itemDeleteNotifications: true,
-        itemEditNotifications: true,
-        itemCompleteNotifications: true
-      };
+  async getSettings(): Promise<Settings | null> {
+    const results = await db.getAllAsync<{ key: string; value: string }>(
+      'SELECT key, value FROM settings'
+    );
 
-      const rows = await db.getAllAsync<{ key: string; value: string }>(
-        'SELECT key, value FROM settings'
-      );
+    if (results.length === 0) return null;
 
-      rows.forEach(row => {
-        switch (row.key) {
-          case 'theme':
-            settings.theme = row.value as 'light' | 'dark';
-            break;
-          case 'notifications_enabled':
-            settings.notificationsEnabled = row.value === 'true';
-            break;
-          case 'title_change_notifications':
-            settings.titleChangeNotifications = row.value === 'true';
-            break;
-          case 'item_add_notifications':
-            settings.itemAddNotifications = row.value === 'true';
-            break;
-          case 'item_delete_notifications':
-            settings.itemDeleteNotifications = row.value === 'true';
-            break;
-          case 'item_edit_notifications':
-            settings.itemEditNotifications = row.value === 'true';
-            break;
-          case 'item_complete_notifications':
-            settings.itemCompleteNotifications = row.value === 'true';
-            break;
-        }
-      });
+    const settings = {
+      theme: 'light' as 'light' | 'dark',
+      notificationsEnabled: true,
+      titleChangeNotifications: true,
+      itemAddNotifications: true,
+      itemDeleteNotifications: true,
+      itemEditNotifications: true,
+      itemCompleteNotifications: true
+    };
 
-      return settings;
-    } catch (error) {
-      console.error('[Database] Error loading settings:', error);
-      throw error;
+    for (const row of results) {
+      if (row.key === 'theme') {
+        settings[row.key] = row.value as 'light' | 'dark';
+      } else {
+        settings[row.key as keyof Omit<Settings, 'theme'>] = row.value === 'true';
+      }
     }
+
+    return settings;
   }
 
   // Lists operations
   async saveLists(lists: any[], isShared: boolean = false): Promise<void> {
-    await db.withTransactionAsync(async () => {
-      for (const list of lists) {
-        const currentList = await db.getFirstAsync<{ version: number, server_version: number }>(
-          'SELECT version, server_version FROM lists WHERE id = ?',
-          [list.id]
-        );
+    await this.executeInTransaction(async () => {
+      await db.withTransactionAsync(async () => {
+        for (const list of lists) {
+          const currentList = await db.getFirstAsync<{ version: number, server_version: number }>(
+            'SELECT version, server_version FROM lists WHERE id = ?',
+            [list._id]
+          );
 
-        const version = currentList ? currentList.version + 1 : 1;
-        const serverVersion = list.version || (currentList ? currentList.server_version : 1);
+          const version = currentList ? currentList.version + 1 : 1;
+          const serverVersion = list.version || (currentList ? currentList.server_version : 1);
 
-        await db.runAsync(
-          'INSERT OR REPLACE INTO lists (id, data, last_updated, is_shared, version, server_version) VALUES (?, ?, ?, ?, ?, ?)',
-          [list.id, JSON.stringify(list), Date.now(), isShared ? 1 : 0, version, serverVersion]
-        );
-      }
+          await db.runAsync(
+            'INSERT OR REPLACE INTO lists (id, data, last_updated, is_shared, version, server_version) VALUES (?, ?, ?, ?, ?, ?)',
+            [list._id, JSON.stringify(list), Date.now(), isShared ? 1 : 0, version, serverVersion]
+          );
+        }
+      });
     });
   }
 
@@ -237,7 +241,8 @@ class DatabaseService {
       [isShared ? 1 : 0]
     );
 
-    return results.map(row => JSON.parse(row.data));
+    const lists = results.map(row => JSON.parse(row.data));
+    return lists;
   }
 
   // Shared lists operations
@@ -373,58 +378,6 @@ class DatabaseService {
     );
   }
 
-  // ID Mapping operations
-  async saveIdMapping(tempId: string, actualId: string, status: 'pending' | 'completed' | 'failed'): Promise<void> {
-    const now = Date.now();
-    await db.runAsync(
-      `INSERT OR REPLACE INTO id_mappings 
-       (temp_id, actual_id, status, created_at, updated_at) 
-       VALUES (?, ?, ?, ?, ?)`,
-      [tempId, actualId, status, now, now]
-    );
-  }
-
-  async getIdMapping(id: string): Promise<{ tempId: string; actualId: string; status: string } | null> {
-    const mapping = await db.getFirstAsync<{ temp_id: string; actual_id: string; status: string }>(
-      'SELECT temp_id, actual_id, status FROM id_mappings WHERE temp_id = ? OR actual_id = ?',
-      [id, id]
-    );
-
-    return mapping ? {
-      tempId: mapping.temp_id,
-      actualId: mapping.actual_id,
-      status: mapping.status
-    } : null;
-  }
-
-  async getAllIdMappings(): Promise<Array<{ tempId: string; actualId: string; status: string }>> {
-    const mappings = await db.getAllAsync<{ temp_id: string; actual_id: string; status: string }>(
-      'SELECT temp_id, actual_id, status FROM id_mappings'
-    );
-
-    return mappings.map(m => ({
-      tempId: m.temp_id,
-      actualId: m.actual_id,
-      status: m.status
-    }));
-  }
-
-  async updateIdMappingStatus(id: string, status: 'pending' | 'completed' | 'failed'): Promise<void> {
-    await db.runAsync(
-      `UPDATE id_mappings 
-       SET status = ?, updated_at = ? 
-       WHERE temp_id = ? OR actual_id = ?`,
-      [status, Date.now(), id, id]
-    );
-  }
-
-  async removeIdMapping(tempId: string): Promise<void> {
-    await db.runAsync(
-      'DELETE FROM id_mappings WHERE temp_id = ?',
-      [tempId]
-    );
-  }
-
   // Conflict history methods
   async batchSaveConflictHistory(conflicts: ConflictDetails[]): Promise<void> {
     await db.withTransactionAsync(async () => {
@@ -481,6 +434,58 @@ class DatabaseService {
     await db.runAsync(
       'DELETE FROM conflict_history WHERE timestamp < ?',
       [timestamp]
+    );
+  }
+
+  // ID Mapping operations
+  async saveIdMapping(tempId: string, actualId: string, status: 'pending' | 'completed' | 'failed'): Promise<void> {
+    const now = Date.now();
+    await db.runAsync(
+      `INSERT OR REPLACE INTO id_mappings 
+       (temp_id, actual_id, status, created_at, updated_at) 
+       VALUES (?, ?, ?, ?, ?)`,
+      [tempId, actualId, status, now, now]
+    );
+  }
+
+  async getIdMapping(id: string): Promise<{ tempId: string; actualId: string; status: string } | null> {
+    const mapping = await db.getFirstAsync<{ temp_id: string; actual_id: string; status: string }>(
+      'SELECT temp_id, actual_id, status FROM id_mappings WHERE temp_id = ? OR actual_id = ?',
+      [id, id]
+    );
+
+    return mapping ? {
+      tempId: mapping.temp_id,
+      actualId: mapping.actual_id,
+      status: mapping.status
+    } : null;
+  }
+
+  async getAllIdMappings(): Promise<Array<{ tempId: string; actualId: string; status: string }>> {
+    const mappings = await db.getAllAsync<{ temp_id: string; actual_id: string; status: string }>(
+      'SELECT temp_id, actual_id, status FROM id_mappings'
+    );
+
+    return mappings.map(m => ({
+      tempId: m.temp_id,
+      actualId: m.actual_id,
+      status: m.status
+    }));
+  }
+
+  async updateIdMappingStatus(id: string, status: 'pending' | 'completed' | 'failed'): Promise<void> {
+    await db.runAsync(
+      `UPDATE id_mappings 
+       SET status = ?, updated_at = ? 
+       WHERE temp_id = ? OR actual_id = ?`,
+      [status, Date.now(), id, id]
+    );
+  }
+
+  async removeIdMapping(tempId: string): Promise<void> {
+    await db.runAsync(
+      'DELETE FROM id_mappings WHERE temp_id = ?',
+      [tempId]
     );
   }
 }

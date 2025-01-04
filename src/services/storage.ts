@@ -1,4 +1,3 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { databaseService } from './database';
 import { Settings } from '../types/settings';
 
@@ -6,8 +5,8 @@ export const storage = {
   // Retrieves all lists from storage
   async getLists(): Promise<any[]> {
     try {
-      const listsJson = await AsyncStorage.getItem('lists');
-      return listsJson ? JSON.parse(listsJson) : [];
+      const lists = await databaseService.getLists();
+      return lists;
     } catch (error) {
       console.error('[Storage] Error retrieving lists:', error);
       return [];
@@ -16,9 +15,12 @@ export const storage = {
 
   // Saves lists to storage, handling duplicates and merging with existing lists
   async saveLists(lists: any[]): Promise<void> {
-    const existingLists = await this.getLists();
-    const mergedLists = this.mergeLists(existingLists, lists);
-    await AsyncStorage.setItem('lists', JSON.stringify(mergedLists));
+    try {
+      await databaseService.saveLists(lists);
+    } catch (error) {
+      console.error('[Storage] Error saving lists:', error);
+      throw error;
+    }
   },
 
   // Helper function to find duplicate lists by ID
@@ -74,6 +76,7 @@ export const storage = {
       const authData = await databaseService.getAuthData();
       return authData.token;
     } catch (error) {
+      console.error('[Storage] Error reading auth token:', error);
       return null;
     }
   },
@@ -83,6 +86,7 @@ export const storage = {
       const currentData = await databaseService.getAuthData();
       await databaseService.saveAuthData(token, currentData?.userData || null);
     } catch (error) {
+      console.error('[Storage] Error saving auth token:', error);
       throw error;
     }
   },
@@ -108,7 +112,8 @@ export const storage = {
   // Settings operations
   async getSettings(): Promise<Settings | null> {
     try {
-      return await databaseService.getSettings();
+      const settings = await databaseService.getSettings();
+      return settings;
     } catch (error) {
       console.error('[Storage] Error reading settings:', error);
       return null;
@@ -120,7 +125,7 @@ export const storage = {
       await databaseService.saveSettings(settings as Settings);
     } catch (error) {
       console.error('[Storage] Error saving settings:', error);
-      throw error; // Propagate error to allow proper error handling in components
+      throw error;
     }
   },
 
@@ -129,15 +134,16 @@ export const storage = {
     try {
       await databaseService.saveSelectedList(listId);
     } catch (error) {
-      console.error('Error saving selected list to storage:', error);
+      console.error('[Storage] Error saving selected list:', error);
     }
   },
 
   async getSelectedList() {
     try {
-      return await databaseService.getSelectedList();
+      const selectedList = await databaseService.getSelectedList();
+      return selectedList;
     } catch (error) {
-      console.error('Error reading selected list from storage:', error);
+      console.error('[Storage] Error reading selected list:', error);
       return null;
     }
   },
@@ -158,7 +164,6 @@ export const storage = {
       const userData = await this.getUserData();
       
       await databaseService.clearAllData();
-      await AsyncStorage.clear();
       
       if (authToken) {
         await this.saveAuthToken(authToken);
