@@ -46,29 +46,31 @@ export function RootNavigator() {
       }
       
       initializationRef.current = true;
+      console.log('[RootNavigator] Initializing app...');
 
       try {
+        // Check permissions
         const permissionsStatus = await checkPermissions();
         const permissionsNeeded = !permissionsStatus.notifications || !permissionsStatus.batteryOptimization;
+        setNeedsPermissions(permissionsNeeded);
 
         if (!mountedRef.current) return;
 
-        setNeedsPermissions(permissionsNeeded);
-
-        if (!permissionsNeeded) {
-          const storedToken = await storage.getAuthToken();
-          
-          if (storedToken) {
-            try {
-              await dispatch(loadUser()).unwrap();
-              syncService.startPeriodicSync(30000);
-            } catch (error) {
-              await storage.saveAuthToken(null);
-            }
+        // Load stored token regardless of permissions
+        const storedToken = await storage.getAuthToken();
+        console.log('[RootNavigator] Stored token:', !!storedToken);
+        
+        if (storedToken) {
+          try {
+            await dispatch(loadUser()).unwrap();
+            syncService.startPeriodicSync(30000);
+          } catch (error) {
+            console.error('[RootNavigator] Failed to load user:', error);
+            await storage.saveAuthToken(null);
           }
         }
       } catch (error: any) {
-        // Error handling remains silent
+        console.error('[RootNavigator] Initialization error:', error);
       } finally {
         if (mountedRef.current) {
           setIsInitializing(false);
