@@ -5,9 +5,23 @@ import { List } from '../types/list';
 import { storage } from './storage';
 import { conflictResolutionService } from './conflictResolution';
 
+// Define status types enum for better type safety and maintainability
+enum SyncStatus {
+  PENDING = 'pending',
+  COMPLETED = 'completed',
+  FAILED = 'failed'
+}
+
+// Define action types enum for better type safety and maintainability
+enum ActionType {
+  CREATE = 'CREATE_LIST',
+  UPDATE = 'UPDATE_LIST',
+  DELETE = 'DELETE_LIST'
+}
+
 interface PendingChange {
   id: number;
-  actionType: string;
+  actionType: ActionType;
   entityId: string;
   data: any;
   timestamp: number;
@@ -19,18 +33,23 @@ interface PendingChange {
 interface IDMapping {
   tempId: string;
   actualId: string;
-  status: 'pending' | 'completed' | 'failed';
+  status: SyncStatus;
+  createdAt: number; // Timestamp when the mapping was created
 }
 
 class SyncService {
   private isProcessing: boolean = false;
   private readonly MAX_RETRIES = 3;
   private readonly BATCH_SIZE = 5;
+  private readonly MAPPING_TTL = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+  private readonly CLEANUP_INTERVAL = 60 * 60 * 1000; // 1 hour in milliseconds
   private syncInterval: NodeJS.Timeout | null = null;
+  private cleanupInterval: NodeJS.Timeout | null = null;
   private idMappings: Map<string, IDMapping> = new Map();
 
   constructor() {
     this.initializeIdMappings();
+    this.startCleanupInterval();
   }
 
   // Initialize ID mappings from database
@@ -39,17 +58,74 @@ class SyncService {
       const mappings = await databaseService.getAllIdMappings();
       this.idMappings.clear();
       
+      const now = Date.now();
       mappings.forEach(mapping => {
         const idMapping: IDMapping = {
           tempId: mapping.tempId,
           actualId: mapping.actualId,
-          status: mapping.status as 'pending' | 'completed' | 'failed'
+          status: mapping.status as SyncStatus,
+          createdAt: now // Always use current time for existing mappings for safety
         };
         this.idMappings.set(mapping.tempId, idMapping);
         this.idMappings.set(mapping.actualId, idMapping);
       });
+
+      // Clean up expired mappings on initialization
+      await this.cleanupExpiredMappings();
     } catch (error) {
       throw error;
+    }
+  }
+
+  // Start the cleanup interval
+  private startCleanupInterval() {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+    }
+
+    this.cleanupInterval = setInterval(() => {
+      this.cleanupExpiredMappings();
+    }, this.CLEANUP_INTERVAL);
+  }
+
+  // Stop the cleanup interval
+  private stopCleanupInterval() {
+    if (this.cleanupInterval) {
+      clearInterval(this.cleanupInterval);
+      this.cleanupInterval = null;
+    }
+  }
+
+  // Cleanup expired mappings
+  private async cleanupExpiredMappings() {
+    const now = Date.now();
+    const expiredMappings: string[] = [];
+    const pendingChanges = await databaseService.getPendingChanges() as PendingChange[];
+    
+    // Create a set of entityIds that have pending changes for quick lookup
+    const entityIdsWithPendingChanges = new Set(pendingChanges.map(change => change.entityId));
+
+    // Identify mappings that can be safely removed
+    this.idMappings.forEach((mapping, key) => {
+      const hasExpiredTime = now - mapping.createdAt > this.MAPPING_TTL;
+      const hasPendingChanges = entityIdsWithPendingChanges.has(mapping.tempId) || 
+                               entityIdsWithPendingChanges.has(mapping.actualId);
+      
+      // Only remove mapping if:
+      // 1. It has exceeded TTL AND
+      // 2. It's in COMPLETED or FAILED status (not PENDING) AND
+      // 3. It has no pending changes associated with it
+      if (hasExpiredTime && 
+          mapping.status !== SyncStatus.PENDING && 
+          !hasPendingChanges) {
+        expiredMappings.push(key);
+      }
+    });
+
+    // Remove safe-to-delete mappings
+    for (const key of expiredMappings) {
+      this.idMappings.delete(key);
+      await databaseService.removeIdMapping(key);
     }
   }
 
@@ -84,7 +160,7 @@ class SyncService {
   }
 
   // Add a new change to the pending changes queue
-  async addPendingChange(actionType: string, entityId: string, data: any) {
+  async addPendingChange(actionType: ActionType, entityId: string, data: any) {
     await databaseService.addPendingChange(actionType, entityId, data);
     
     const state = store.getState();
@@ -97,9 +173,9 @@ class SyncService {
 
   // Sort changes by operation type priority
   private sortChangesByPriority(changes: PendingChange[]): PendingChange[] {
-    const createChanges = changes.filter(c => c.actionType === 'CREATE_LIST');
-    const updateChanges = changes.filter(c => c.actionType === 'UPDATE_LIST');
-    const deleteChanges = changes.filter(c => c.actionType === 'DELETE_LIST');
+    const createChanges = changes.filter(c => c.actionType === ActionType.CREATE);
+    const updateChanges = changes.filter(c => c.actionType === ActionType.UPDATE);
+    const deleteChanges = changes.filter(c => c.actionType === ActionType.DELETE);
 
     return [...createChanges, ...updateChanges, ...deleteChanges];
   }
@@ -112,7 +188,7 @@ class SyncService {
 
     try {
       this.isProcessing = true;
-      const pendingChanges = await databaseService.getPendingChanges();
+      const pendingChanges = await databaseService.getPendingChanges() as PendingChange[];
       
       // Group changes by entity and sort by operation type
       const changesByEntity = this.groupChangesByEntity(pendingChanges);
@@ -124,7 +200,7 @@ class SyncService {
           
           // After successful sync, cleanup any temp lists and mappings
           const mapping = this.idMappings.get(entityId);
-          if (mapping && mapping.status === 'completed') {
+          if (mapping && mapping.status === SyncStatus.COMPLETED) {
             await this.cleanupAfterSync(mapping.tempId, mapping.actualId);
           }
         } catch (error) {
@@ -152,30 +228,52 @@ class SyncService {
     return groups;
   }
 
-  // Process all changes for a specific entity
+  /**
+   * Process all changes for a specific entity in sequence.
+   * This ensures that operations on the same entity are handled in the correct order
+   * (e.g., create before update, update before delete).
+   * Changes are processed in batches defined by BATCH_SIZE to prevent overwhelming the system.
+   * 
+   * @param entityId - The ID of the entity being processed
+   * @param changes - Array of changes to process for this entity
+   */
   private async processEntityChanges(entityId: string, changes: PendingChange[]) {
-    let operationCount = 0;
-
     try {
-      for (const change of changes) {
-        await this.processChange(change);
-        operationCount++;
+      // Process changes in batches
+      for (let i = 0; i < changes.length; i += this.BATCH_SIZE) {
+        const batch = changes.slice(i, i + this.BATCH_SIZE);
+        
+        // Process each change in the current batch sequentially
+        for (const change of batch) {
+          await this.processChange(change);
+        }
+        
+        // Optional: Add a small delay between batches to prevent rate limiting
+        if (i + this.BATCH_SIZE < changes.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
       }
     } catch (error) {
       throw error;
     }
   }
 
-  // Process a single change
+  /**
+   * Process a single change operation based on its action type.
+   * Routes the change to the appropriate handler based on the action type
+   * (create, update, or delete).
+   * 
+   * @param change - The change operation to process
+   */
   private async processChange(change: PendingChange) {
     switch (change.actionType) {
-      case 'CREATE_LIST':
+      case ActionType.CREATE:
         await this.processCreateList(change);
         break;
-      case 'UPDATE_LIST':
+      case ActionType.UPDATE:
         await this.processUpdateList(change);
         break;
-      case 'DELETE_LIST':
+      case ActionType.DELETE:
         await this.processDeleteList(change);
         break;
       default:
@@ -209,14 +307,15 @@ class SyncService {
       const newMapping = {
         tempId: change.entityId,
         actualId: newList._id,
-        status: 'completed' as const
+        status: SyncStatus.COMPLETED,
+        createdAt: Date.now()
       };
 
       await Promise.all([
         (async () => {
           this.idMappings.set(change.entityId, newMapping);
           this.idMappings.set(newList._id, newMapping);
-          await databaseService.saveIdMapping(change.entityId, newList._id, 'completed');
+          await databaseService.saveIdMapping(change.entityId, newList._id, SyncStatus.COMPLETED);
         })(),
         store.dispatch(updateListInStore(newList)),
         databaseService.removePendingChange(change.id)
@@ -285,8 +384,8 @@ class SyncService {
   private async markDependentChangesFailed(entityId: string, changes: PendingChange[]) {
     for (const change of changes) {
       await Promise.all([
-        databaseService.updatePendingChangeStatus(change.id, 'failed'),
-        databaseService.updateIdMappingStatus(change.entityId, 'failed')
+        databaseService.updatePendingChangeStatus(change.id, SyncStatus.FAILED),
+        databaseService.updateIdMappingStatus(change.entityId, SyncStatus.FAILED)
       ]);
     }
   }
@@ -310,7 +409,14 @@ class SyncService {
       return serverData;
     }
   }
+
+  // Override dispose/cleanup method
+  dispose() {
+    this.stopPeriodicSync();
+    this.stopCleanupInterval();
+    this.idMappings.clear();
+  }
 }
 
-export const syncService = new SyncService();
-export default syncService; 
+// Export only the singleton instance
+export default new SyncService(); 

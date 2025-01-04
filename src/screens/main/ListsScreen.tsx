@@ -37,6 +37,7 @@ export default function ListsScreen() {
   }, [auth]);
 
   useEffect(() => {
+	console.log('[ListsScreen] Selected list:', selectedList);
     if (!selectedList) return;
 
     socketService.joinList(selectedList);
@@ -60,20 +61,25 @@ export default function ListsScreen() {
 
   useEffect(() => {
     if (networkState.lastConnectionRestored) {
+      console.log('[ListsScreen] Network connection restored, fetching lists');
       dispatch(fetchLists());
     }
   }, [networkState.lastConnectionRestored, dispatch]);
 
   useEffect(() => {
+    console.log('[ListsScreen] Initial lists fetch');
     dispatch(fetchLists());
 
     // Load the previously selected list from storage
     const loadSelectedList = async () => {
       const savedListId = await storage.getSelectedList();
+      console.log('[ListsScreen] Loaded selected list from storage:', savedListId);
       if (savedListId && lists?.some((list: List) => list._id === savedListId)) {
         setSelectedList(savedListId);
+        console.log('[ListsScreen] Restored selected list:', savedListId);
       } else {
         await storage.saveSelectedList(null);
+        console.log('[ListsScreen] Cleared invalid selected list');
       }
     };
     loadSelectedList();
@@ -81,6 +87,7 @@ export default function ListsScreen() {
     // Cleanup on unmount
     return () => {
       if (selectedList) {
+        console.log('[ListsScreen] Leaving list room:', selectedList);
         socketService.leaveList(selectedList);
       }
     };
@@ -88,14 +95,17 @@ export default function ListsScreen() {
 
   useEffect(() => {
     if (lists?.length > 0 && !selectedList) {
+      console.log('[ListsScreen] Auto-selecting first list:', lists[0]._id);
       setSelectedList(lists[0]._id);
     } else if (lists?.length === 0) {
+      console.log('[ListsScreen] No lists available, clearing selection');
       setSelectedList(null);
       storage.saveSelectedList(null);
     }
   }, [lists, selectedList]);
 
   const handleListPress = async (listId: string) => {
+    console.log('[ListsScreen] Switching to list:', listId);
     if (selectedList) {
       socketService.leaveList(selectedList);
     }
@@ -103,6 +113,7 @@ export default function ListsScreen() {
     setSelectedList(listId);
     setIsDropdownOpen(false);
     await storage.saveSelectedList(listId);
+    console.log('[ListsScreen] List switch complete');
   };
 
   const handleCreateList = async () => {
@@ -142,6 +153,9 @@ export default function ListsScreen() {
     if (!selectedList || !selectedListData) return;
 
     const updatedItems = selectedListData.items.filter(item => item._id !== itemId);
+
+	console.log('[ListsScreen] Deleting item:', itemId);
+	console.log('[ListsScreen] Updated items after deletion:', updatedItems);
 
     try {
       await dispatch(updateList({
@@ -188,7 +202,7 @@ export default function ListsScreen() {
     if (items.length === 0) return;
 
     try {
-      // Add all items at once
+      // Add all items at once with temporary IDs for offline tracking
       const newItemsList = items.map(itemText => ({
         _id: `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
         text: itemText,
@@ -197,14 +211,26 @@ export default function ListsScreen() {
         updatedAt: new Date().toISOString()
       }));
 
+      // Append new items to existing ones
       const updatedItems = [...selectedListData.items, ...newItemsList];
+      
+      console.log('[ListsScreen] Adding items:', {
+        newItems: newItemsList,
+        isConnected: networkState.isConnected,
+        isInternetReachable: networkState.isInternetReachable,
+        currentItems: selectedListData.items.length,
+        updatedItemsCount: updatedItems.length
+      });
+
       await dispatch(updateList({
         listId: selectedList,
         data: { items: updatedItems }
       })).unwrap();
+
+      console.log('[ListsScreen] Items added successfully');
       setNewItems('');
     } catch (error) {
-      console.error('Failed to add items:', error);
+      console.error('[ListsScreen] Failed to add items:', error);
     }
   };
 
