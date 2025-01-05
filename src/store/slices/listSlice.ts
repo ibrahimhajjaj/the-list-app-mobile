@@ -83,11 +83,6 @@ const listSlice = createSlice({
               ...updatedCurrentList,
               shared: Boolean(updatedCurrentList.sharedWith?.length)
             };
-            console.log('[ListSlice] Updated current list after fetch:', {
-              listId: state.currentList._id,
-              itemCount: state.currentList.items.length,
-              itemIds: state.currentList.items.map(i => i._id)
-            });
           }
         }
       })
@@ -336,11 +331,6 @@ const listSlice = createSlice({
     // Update List In Store (for sync updates)
     builder
       .addCase(updateListInStore, (state, action: PayloadAction<List>) => {
-        console.log('[ListSlice] Updating list in store:', {
-          listId: action.payload._id,
-          itemCount: action.payload.items.length,
-          itemIds: action.payload.items.map(i => i._id)
-        });
 
         const updatedList = {
           ...action.payload,
@@ -349,23 +339,10 @@ const listSlice = createSlice({
         const index = state.lists.findIndex(list => list._id === updatedList._id);
         if (index !== -1) {
           state.lists[index] = updatedList;
-          console.log('[ListSlice] Updated lists array, new state:', {
-            listId: updatedList._id,
-            itemCount: updatedList.items.length,
-            itemIds: updatedList.items.map(i => i._id),
-            totalLists: state.lists.length
-          });
         }
         if (state.currentList?._id === updatedList._id) {
           state.currentList = updatedList;
-          console.log('[ListSlice] Updated current list:', {
-            listId: updatedList._id,
-            itemCount: updatedList.items.length,
-            itemIds: updatedList.items.map(i => i._id)
-          });
         }
-
-        console.log('[ListSlice] Store update complete');
       });
   },
 });
