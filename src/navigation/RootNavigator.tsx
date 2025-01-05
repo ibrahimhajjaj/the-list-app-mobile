@@ -13,6 +13,7 @@ import socketService from '../services/socket';
 import syncService from '../services/sync';
 import { View } from 'react-native';
 import { ConnectionStatusIndicator } from '../components/ConnectionStatusIndicator';
+import { store } from '../store';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -25,7 +26,6 @@ export function RootNavigator() {
   const initializationRef = useRef<boolean>(false);
   const mountedRef = useRef(true);
   const socketInitializedRef = useRef(false);
-  const previousTokenRef = useRef<string | null>(null);
 
   useEffect(() => {
     dispatch(initializeNetworkMonitoring());
@@ -80,17 +80,30 @@ export function RootNavigator() {
 
   useEffect(() => {
     const handleSocketConnection = async () => {
-      previousTokenRef.current = token;
+      // Skip if already initialized or still initializing
+      if (socketInitializedRef.current || isInitializing) {
+        return;
+      }
 
+      // Clear initialization flag when token is removed
+      if (!token) {
+        socketInitializedRef.current = false;
+        if (socketService.isConnected) {
+          socketService.disconnect();
+          syncService.stopPeriodicSync();
+        }
+        return;
+      }
+
+      // Only proceed if we have all required conditions
       if (token && user && !isInitializing) {
-        if (!socketService.isConnected && !socketInitializedRef.current) {
+        const networkState = store.getState().network;
+        const isNetworkAvailable = networkState.isConnected && networkState.isInternetReachable;
+
+        if (isNetworkAvailable) {
           socketInitializedRef.current = true;
           await socketService.connect(token);
         }
-      } else if (!token && socketService.isConnected) {
-        socketInitializedRef.current = false;
-        socketService.disconnect();
-        syncService.stopPeriodicSync();
       }
     };
 

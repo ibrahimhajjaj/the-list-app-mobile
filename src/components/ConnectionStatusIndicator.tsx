@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Animated, Platform } from 'react-native';
 import { useThemeColors } from '../constants/theme';
 import { useSelector } from 'react-redux';
 import { selectConnectionState, selectIsConnected, selectIsReconnecting } from '../store';
+import { RootState } from '../store';
 
 export function ConnectionStatusIndicator() {
   const colors = useThemeColors();
@@ -10,7 +11,9 @@ export function ConnectionStatusIndicator() {
   const connectionState = useSelector(selectConnectionState);
   const isConnected = useSelector(selectIsConnected);
   const isReconnecting = useSelector(selectIsReconnecting);
+  const networkState = useSelector((state: RootState) => state.network);
   const opacity = React.useRef(new Animated.Value(0)).current;
+  const [previousStatus, setPreviousStatus] = useState(connectionState.status);
 
   const animateVisibility = useCallback((toValue: number, callback?: () => void) => {
     Animated.timing(opacity, {
@@ -19,6 +22,64 @@ export function ConnectionStatusIndicator() {
       useNativeDriver: true,
     }).start(callback);
   }, [opacity]);
+
+  const getMessage = useCallback(() => {
+    if (!networkState.isConnected) {
+      return 'No network connection';
+    }
+    if (!networkState.isInternetReachable) {
+      return 'Checking internet connection...';
+    }
+
+    // Check if we're in a cleanup phase during reconnection
+    const isCleanupPhase = connectionState.status === 'disconnected' && 
+      previousStatus === 'connecting' &&
+      isReconnecting;
+
+    if (isCleanupPhase) {
+      return 'Reconnecting...';
+    }
+
+    switch (connectionState.status) {
+      case 'connected':
+        return 'Connected';
+      case 'connecting': {
+        const hasTransportError = connectionState.error?.message?.includes('transport error');
+        if (hasTransportError || isReconnecting) {
+          return 'Reconnecting...';
+        }
+        return 'Connecting...';
+      }
+      case 'disconnected': {
+        const isTransportError = connectionState.error?.message?.includes('transport error');
+        if (isTransportError || isReconnecting) {
+          return 'Reconnecting...';
+        }
+        return connectionState.error ? 'Connection failed' : 'Connection lost';
+      }
+      case 'error': {
+        if (isReconnecting) {
+          return 'Reconnecting...';
+        }
+        if (connectionState.error?.message?.includes('timeout')) {
+          return 'Connection timeout';
+        }
+        if (connectionState.error?.message?.includes('WebSocket')) {
+          return 'Server unavailable';
+        }
+        return 'Connection error';
+      }
+      default:
+        return 'Connecting...';
+    }
+  }, [
+    connectionState.status,
+    connectionState.error,
+    previousStatus,
+    isReconnecting,
+    networkState.isConnected,
+    networkState.isInternetReachable
+  ]);
 
   useEffect(() => {
     let hideTimeout: NodeJS.Timeout;
@@ -42,6 +103,7 @@ export function ConnectionStatusIndicator() {
           }, 2000);
         }
       }
+      previousStatus = connectionState.status;
     };
 
     checkConnectionStatus();
@@ -51,37 +113,32 @@ export function ConnectionStatusIndicator() {
       clearInterval(intervalId);
       if (hideTimeout) clearTimeout(hideTimeout);
     };
-  }, [connectionState, isConnected, isReconnecting, animateVisibility, isVisible]);
+  }, [connectionState, isConnected, isReconnecting, animateVisibility, isVisible, networkState, getMessage]);
+
+  useEffect(() => {
+    setPreviousStatus(connectionState.status);
+  }, [connectionState.status]);
 
   if (!isVisible || connectionState.appState !== 'active') return null;
 
   const getStatusColor = () => {
+    if (!networkState.isConnected || !networkState.isInternetReachable) {
+      return colors.warning;
+    }
+
     switch (connectionState.status) {
       case 'connected':
         return colors.success;
       case 'connecting':
-        return colors.warning;
       case 'disconnected':
+        if (isReconnecting || connectionState.error?.message?.includes('transport error')) {
+          return colors.warning;
+        }
+        return connectionState.status === 'connecting' ? colors.warning : colors.destructive;
       case 'error':
-        return colors.destructive;
+        return isReconnecting ? colors.warning : colors.destructive;
       default:
         return colors.warning;
-    }
-  };
-
-  const getMessage = () => {
-    switch (connectionState.status) {
-      case 'connected':
-        return 'Connected';
-      case 'connecting':
-        return isReconnecting ? 'Reconnecting...' : 'Connecting...';
-      case 'disconnected':
-        return 'Connection lost';
-      case 'error':
-        const errorMessage = connectionState.error?.message;
-        return errorMessage ? `Connection error: ${errorMessage}` : 'Connection error';
-      default:
-        return 'Connecting...';
     }
   };
 

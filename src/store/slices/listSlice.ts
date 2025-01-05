@@ -64,15 +64,10 @@ const listSlice = createSlice({
     // Fetch Lists
     builder
       .addCase(fetchLists.pending, (state) => {
-        console.log('[ListSlice] Fetching lists...');
         state.loading = true;
         state.error = null;
       })
       .addCase(fetchLists.fulfilled, (state, action: PayloadAction<List[]>) => {
-        console.log('[ListSlice] Lists fetched:', {
-          count: action.payload.length,
-          listIds: action.payload.map(l => l._id)
-        });
         state.lists = action.payload.map(list => ({
           ...list,
           shared: Boolean(list.sharedWith?.length)
