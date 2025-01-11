@@ -10,7 +10,8 @@ import * as Device from 'expo-device';
 import * as BackgroundFetch from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
 import { notificationService } from './notificationService';
-import { setConnectionStatus, setAppState } from '../store/slices/connectionSlice';
+import { setAppState } from '../store/slices/appStateSlice';
+import { socketInitialized, socketConnected, socketDisconnected, socketError, socketReset } from '../store/slices/socketSlice';
 
 const BACKGROUND_FETCH_TASK = 'background-fetch';
 
@@ -69,10 +70,7 @@ class SocketService {
     this.currentToken = authState.token;
     
     // Initialize with disconnected state
-    store.dispatch(setConnectionStatus({
-      status: 'disconnected',
-      isReconnecting: false
-    }));
+    store.dispatch(socketReset());
   }
 
   private setupAppStateListener() {
@@ -98,11 +96,6 @@ class SocketService {
 
   private async handleForeground() {
     if (this.currentToken) {
-      store.dispatch(setConnectionStatus({
-        status: 'connecting',
-        isReconnecting: true
-      }));
-
       try {
         const isNetworkAvailable = store.getState().network.isConnected && store.getState().network.isInternetReachable;
         
@@ -126,10 +119,7 @@ class SocketService {
     // Disconnect socket but maintain subscriptions
     if (this._socket) {
       this._socket.disconnect();
-      store.dispatch(setConnectionStatus({
-        status: 'disconnected',
-        isReconnecting: false
-      }));
+      store.dispatch(socketDisconnected({ reason: 'app background' }));
     }
 
     // Ensure we have push notifications set up as fallback
@@ -261,13 +251,13 @@ class SocketService {
   }
 
   get isConnected(): boolean {
-    const connectionState = (store.getState() as RootState).connection;
-    return connectionState.status === 'connected';
+    const socketState = (store.getState() as RootState).socket;
+    return socketState.isConnected;
   }
 
   get isReconnecting(): boolean {
-    const connectionState = (store.getState() as RootState).connection;
-    return connectionState.isReconnecting;
+    const socketState = (store.getState() as RootState).socket;
+    return socketState.reconnectAttempts > 0;
   }
 
   private async validateToken(token: string): Promise<boolean> {
@@ -324,11 +314,7 @@ class SocketService {
 
     if (this.retryCount >= maxRetries) {
       console.log('[Socket] Max retries reached for reason:', disconnectReason);
-      store.dispatch(setConnectionStatus({
-        status: 'error',
-        error: new Error(`Max retries (${maxRetries}) reached for ${disconnectReason}`),
-        isReconnecting: false
-      }));
+      store.dispatch(socketError({ error: `Max retries (${maxRetries}) reached for ${disconnectReason}` }));
       return;
     }
 
@@ -337,7 +323,7 @@ class SocketService {
       return;
     }
 
-    const token = this.currentToken; // Store token in closure to ensure it's available
+    const token = this.currentToken;
     this.retryCount++;
     
     const baseDelay = Math.min(
@@ -350,11 +336,6 @@ class SocketService {
     if (this.retryTimeout) {
       clearTimeout(this.retryTimeout);
     }
-
-    store.dispatch(setConnectionStatus({
-      status: 'connecting',
-      isReconnecting: false
-    }));
 
     this.retryTimeout = setTimeout(async () => {
       try {
@@ -457,35 +438,22 @@ class SocketService {
       const isValid = await this.validateToken(token);
       
       if (!isValid) {
-        store.dispatch(setConnectionStatus({
-          status: 'error',
-          error: new Error('Invalid token'),
-          isReconnecting: false
-        }));
+        store.dispatch(socketError({ error: 'Invalid token' }));
         return;
       }
 
       if (this._socket) {
-        this.cleanupForReconnect();  // Use soft cleanup here
+        this.cleanupForReconnect();
       }
 
       const isWebSocketAvailable = await this.checkWebSocketAvailability();
 
       if (!isWebSocketAvailable) {
         console.log('[Socket] WebSocket endpoint unavailable, will retry later');
-        store.dispatch(setConnectionStatus({
-          status: 'error',
-          error: new Error('WebSocket endpoint not available'),
-          isReconnecting: false
-        }));
+        store.dispatch(socketError({ error: 'WebSocket endpoint not available' }));
         await this.handleReconnect();
         return;
       }
-
-      store.dispatch(setConnectionStatus({
-        status: 'connecting',
-        isReconnecting: false
-      }));
 
       this._socket = io(WS_URL, {
         transports: ['websocket'],
@@ -501,11 +469,7 @@ class SocketService {
       const connectionTimeout = setTimeout(() => {
         if (!this._socket?.connected) {
           this._socket?.disconnect();
-          store.dispatch(setConnectionStatus({
-            status: 'error',
-            error: new Error('Connection timeout'),
-            isReconnecting: false
-          }));
+          store.dispatch(socketError({ error: 'Connection timeout' }));
           this.handleReconnect();
         }
       }, 10000);
@@ -513,17 +477,14 @@ class SocketService {
       this._socket.on('connect', () => {
         clearTimeout(connectionTimeout);
         
-        // Immediately update connection status to prevent reconnection attempts
-        store.dispatch(setConnectionStatus({
-          status: 'connected',
-          isReconnecting: false,
-          lastConnected: new Date().toISOString()
-        }));
+        // Initialize socket state
+        store.dispatch(socketInitialized({ socketId: this._socket?.id || '' }));
+        store.dispatch(socketConnected({ socketId: this._socket?.id || '' }));
         
         this.retryCount = 0;
         this.lastPingTime = Date.now();
         this._isConnected = true;
-        this.isConnecting = false;  // Reset connecting flag
+        this.isConnecting = false;
         
         // Re-join all previously subscribed lists
         const listsToJoin = new Set([...this.subscribedLists, ...this.pendingJoins]);
@@ -543,19 +504,12 @@ class SocketService {
         const disconnectReason = reason || this.getDisconnectReason(this._socket);
         this._isConnected = false;
         
+        store.dispatch(socketDisconnected({ reason: disconnectReason }));
+        
         if (disconnectReason === 'io server disconnect' || disconnectReason === 'io client disconnect') {
-          store.dispatch(setConnectionStatus({
-            status: 'disconnected',
-            isReconnecting: false
-          }));
           return;
         }
         
-        store.dispatch(setConnectionStatus({
-          status: 'disconnected',
-          isReconnecting: true,
-          error: new Error(disconnectReason)
-        }));
         this.handleReconnect();
       });
 
@@ -563,17 +517,9 @@ class SocketService {
       this.setupEventListeners();
       this.startHealthCheck();
 
-      if (this.cleanupTimeout) {
-        clearInterval(this.cleanupTimeout);
-      }
-      this.cleanupTimeout = setInterval(() => this.cleanupOldNotifications(), 5000);
     } catch (error) {
       console.error('[Socket] Connection error:', error);
-      store.dispatch(setConnectionStatus({
-        status: 'error',
-        error: error as Error,
-        isReconnecting: false
-      }));
+      store.dispatch(socketError({ error: error instanceof Error ? error.message : 'Unknown error' }));
       await this.handleReconnect();
     } finally {
       this.isConnecting = false;
@@ -640,22 +586,14 @@ class SocketService {
         name: error.name,
         stack: error.stack
       });
-      store.dispatch(setConnectionStatus({
-        status: 'error',
-        error,
-        isReconnecting: false
-      }));
+      store.dispatch(socketError({ error: error.message }));
       
       this.handleReconnect();
     });
 
     this._socket.on('connect', () => {
-      store.dispatch(setConnectionStatus({
-        status: 'connected',
-        isReconnecting: false,
-        lastConnected: new Date().toISOString()
-      }));
-      
+      store.dispatch(socketConnected({ socketId: this._socket?.id || '' }));
+      this.retryCount = 0;
       this.retryCount = 0;
       this.lastPingTime = Date.now();
       this._isConnected = true;
@@ -673,18 +611,13 @@ class SocketService {
       this._isConnected = false;
       
       if (disconnectReason === 'io server disconnect' || disconnectReason === 'io client disconnect') {
-        store.dispatch(setConnectionStatus({
-          status: 'disconnected',
-          isReconnecting: false
-        }));
+        store.dispatch(setAppState('background'));
+		store.dispatch(socketDisconnected({ reason: disconnectReason }));
         return;
       }
       
-      store.dispatch(setConnectionStatus({
-        status: 'disconnected',
-        isReconnecting: true,
-        error: new Error(disconnectReason)
-      }));
+      store.dispatch(setAppState('background'));
+	  store.dispatch(socketDisconnected({ reason: disconnectReason }));
       this.handleReconnect();
     });
 
@@ -845,7 +778,7 @@ class SocketService {
     store.subscribe(() => {
       const state = store.getState();
       const networkState = state.network;
-      const connectionState = state.connection;
+      const socketState = state.socket;
       const networkChanged = 
         this.lastNetworkState.isConnected !== networkState.isConnected ||
         this.lastNetworkState.isInternetReachable !== networkState.isInternetReachable;
@@ -867,7 +800,7 @@ class SocketService {
             networkState.isInternetReachable && 
             this.currentToken &&
             !this._socket?.connected &&  // Check actual socket state
-            connectionState.status !== 'connected' &&  // Check Redux state
+            !socketState.isConnected &&  // Check Redux state
             !this.isConnecting &&  // Prevent duplicate connection attempts
             !this._isReconnecting) {  // Prevent reconnection during cleanup
           this.handleReconnect();
@@ -907,6 +840,8 @@ class SocketService {
       this.recentNotifications.clear();
       this.currentToken = null;
       this.retryCount = 0;
+      // Reset socket state
+      store.dispatch(socketReset());
     }
 
     // Disconnect socket if exists
@@ -921,13 +856,9 @@ class SocketService {
       isConnected: true,
       isInternetReachable: null
     };
-
-    store.dispatch(setConnectionStatus({
-      status: 'disconnected',
-      isReconnecting: false
-    }));
     
-    this._isReconnecting = false;  // Reset flag after cleanup
+    store.dispatch(socketReset());
+    this._isReconnecting = false;
   }
 }
 

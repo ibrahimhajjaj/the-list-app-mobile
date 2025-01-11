@@ -21,6 +21,7 @@ export default function ListsScreen() {
   const { lists, loading: listsLoading } = useAppSelector((state) => state.lists);
   const auth = useAppSelector((state) => state.auth);
   const networkState = useAppSelector((state) => state.network);
+  const socketState = useAppSelector((state) => state.socket);
   const { isDark } = useTheme();
   const [newListName, setNewListName] = useState('');
   const [selectedList, setSelectedList] = useState<string | null>(null);
@@ -80,14 +81,15 @@ export default function ListsScreen() {
 
   // Socket connection effect for selected list updates
   useEffect(() => {
-    if (!selectedList) return;
+    if (!selectedList || !socketState.isConnected) {
+      return;
+    }
 
     socketService.joinList(selectedList);
 
     // Listen for real-time updates
     if (socketService.socket) {
       const onListUpdated = () => {
-        // Refresh lists to get the latest data
         dispatch(fetchLists());
       };
 
@@ -99,11 +101,13 @@ export default function ListsScreen() {
         socketService.leaveList(selectedList);
       };
     }
-  }, [selectedList]);
+  }, [selectedList, socketState.isConnected]);
 
   // Socket connection effect for list creation and deletion
   useEffect(() => {
-    if (!socketService.socket) return;
+    if (!socketService.socket || !socketState.isConnected) {
+      return;
+    }
 
     const onListCreated = (data: any) => {
       dispatch(fetchLists());
@@ -125,7 +129,7 @@ export default function ListsScreen() {
       socketService.socket?.off('listCreated', onListCreated);
       socketService.socket?.off('listDeleted', onListDeleted);
     };
-  }, []);
+  }, [socketState.isConnected]);
 
   const handleListPress = async (listId: string) => {
     if (selectedList) {
@@ -153,10 +157,6 @@ export default function ListsScreen() {
 
   const handleToggleItem = async (itemId: string) => {
     if (!selectedList || !selectedListData) {
-      console.log('[ListsScreen] Cannot toggle item: no selected list or list data', {
-        selectedList,
-        hasListData: !!selectedListData
-      });
       return;
     }
 
@@ -164,10 +164,6 @@ export default function ListsScreen() {
       const item = selectedListData.items.find(item => item._id === itemId);
       
       if (!item) {
-        console.log('[ListsScreen] Item not found in list:', {
-          itemId,
-          listId: selectedList
-        });
         return;
       }
 
@@ -178,7 +174,7 @@ export default function ListsScreen() {
       })).unwrap();
       
     } catch (error) {
-      console.error('[ListsScreen] Failed to toggle item:', error);
+      console.error('Failed to toggle item:', error);
     }
   };
 

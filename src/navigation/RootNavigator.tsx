@@ -20,6 +20,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
 export function RootNavigator() {
   const dispatch = useAppDispatch();
   const { token, user, isAuthenticated } = useAppSelector((state) => state.auth);
+  const socketState = useAppSelector((state) => state.socket);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isSplashReady, setIsSplashReady] = useState(false);
   const [needsPermissions, setNeedsPermissions] = useState(false);
@@ -33,7 +34,7 @@ export function RootNavigator() {
     return () => {
       mountedRef.current = false;
       if (socketService.isConnected) {
-        socketService.disconnect();
+        socketService.disconnect(true); // true for full cleanup
       }
       syncService.stopPeriodicSync();
     };
@@ -88,8 +89,8 @@ export function RootNavigator() {
       // Clear initialization flag when token is removed
       if (!token) {
         socketInitializedRef.current = false;
-        if (socketService.isConnected) {
-          socketService.disconnect();
+        if (socketState.isConnected) {
+          socketService.disconnect(true);
           syncService.stopPeriodicSync();
         }
         return;
@@ -100,7 +101,7 @@ export function RootNavigator() {
         const networkState = store.getState().network;
         const isNetworkAvailable = networkState.isConnected && networkState.isInternetReachable;
 
-        if (isNetworkAvailable) {
+        if (isNetworkAvailable && !socketState.isConnected) {
           socketInitializedRef.current = true;
           await socketService.connect(token);
         }
@@ -108,7 +109,7 @@ export function RootNavigator() {
     };
 
     handleSocketConnection();
-  }, [token, user, isInitializing]);
+  }, [token, user, isInitializing, socketState.isConnected]);
 
   const handleSplashComplete = useCallback(() => {
     if (mountedRef.current) {

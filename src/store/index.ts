@@ -7,14 +7,19 @@ import networkReducer, {
   resetNetworkState, 
   initializeNetworkMonitoring 
 } from './slices/networkSlice';
-import connectionReducer, {
-  setConnectionStatus,
+import appStateReducer, {
   setAppState,
-  resetConnectionState,
-  selectConnectionState,
-  selectIsConnected,
-  selectIsReconnecting
-} from './slices/connectionSlice';
+  resetAppState,
+  selectAppState,
+  selectIsAppActive
+} from './slices/appStateSlice';
+import socketReducer, {
+  socketInitialized,
+  socketConnected,
+  socketDisconnected,
+  socketError,
+  socketReset
+} from './slices/socketSlice';
 import { 
   setLists, 
   setCurrentList, 
@@ -32,18 +37,19 @@ const store = configureStore({
     lists: listReducer,
     settings: settingsReducer,
     network: networkReducer,
-    connection: connectionReducer,
+    appState: appStateReducer,
+    socket: socketReducer
   },
   middleware: (getDefaultMiddleware) => {
     return getDefaultMiddleware({
       serializableCheck: {
         ignoredActions: [
           'network/setNetworkState', 
-          'connection/setConnectionStatus',
+          'socket/socketError',
           'sync/syncFailed'
         ],
         ignoredActionPaths: ['payload.details', 'payload.error'],
-        ignoredPaths: ['network.details', 'connection.error'],
+        ignoredPaths: ['network.details', 'socket.error'],
       },
     }).concat(syncMiddleware);
   },
@@ -73,11 +79,16 @@ export {
   setLoading,
   setError,
 
-  // Connection actions and selectors
-  setConnectionStatus,
+  // App State actions and selectors
   setAppState,
-  resetConnectionState,
-  selectConnectionState,
-  selectIsConnected,
-  selectIsReconnecting,
+  resetAppState,
+  selectAppState,
+  selectIsAppActive,
+
+  // Socket actions
+  socketInitialized,
+  socketConnected,
+  socketDisconnected,
+  socketError,
+  socketReset,
 }; 

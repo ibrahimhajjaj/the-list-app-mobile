@@ -2,18 +2,18 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, Animated, Platform } from 'react-native';
 import { useThemeColors } from '../constants/theme';
 import { useSelector } from 'react-redux';
-import { selectConnectionState, selectIsConnected, selectIsReconnecting } from '../store';
+import { selectAppState, selectIsAppActive } from '../store';
 import { RootState } from '../store';
 
 export function ConnectionStatusIndicator() {
   const colors = useThemeColors();
   const [isVisible, setIsVisible] = useState(false);
-  const connectionState = useSelector(selectConnectionState);
-  const isConnected = useSelector(selectIsConnected);
-  const isReconnecting = useSelector(selectIsReconnecting);
+  const socketState = useSelector((state: RootState) => state.socket);
+  const appState = useSelector(selectAppState);
+  const isAppActive = useSelector(selectIsAppActive);
   const networkState = useSelector((state: RootState) => state.network);
   const opacity = React.useRef(new Animated.Value(0)).current;
-  const [previousStatus, setPreviousStatus] = useState(connectionState.status);
+  const [previousStatus, setPreviousStatus] = useState(socketState.isConnected);
 
   const animateVisibility = useCallback((toValue: number, callback?: () => void) => {
     Animated.timing(opacity, {
@@ -32,66 +32,56 @@ export function ConnectionStatusIndicator() {
     }
 
     // Check if we're in a cleanup phase during reconnection
-    const isCleanupPhase = connectionState.status === 'disconnected' && 
-      previousStatus === 'connecting' &&
-      isReconnecting;
+    const isCleanupPhase = !socketState.isConnected && 
+      previousStatus &&
+      socketState.reconnectAttempts > 0;
 
     if (isCleanupPhase) {
       return 'Reconnecting...';
     }
 
-    switch (connectionState.status) {
-      case 'connected':
-        return 'Connected';
-      case 'connecting': {
-        const hasTransportError = connectionState.error?.message?.includes('transport error');
-        if (hasTransportError || isReconnecting) {
-          return 'Reconnecting...';
-        }
-        return 'Connecting...';
-      }
-      case 'disconnected': {
-        const isTransportError = connectionState.error?.message?.includes('transport error');
-        if (isTransportError || isReconnecting) {
-          return 'Reconnecting...';
-        }
-        return connectionState.error ? 'Connection failed' : 'Connection lost';
-      }
-      case 'error': {
-        if (isReconnecting) {
-          return 'Reconnecting...';
-        }
-        if (connectionState.error?.message?.includes('timeout')) {
-          return 'Connection timeout';
-        }
-        if (connectionState.error?.message?.includes('WebSocket')) {
-          return 'Server unavailable';
-        }
-        return 'Connection error';
-      }
-      default:
-        return 'Connecting...';
+    if (!socketState.isInitialized) {
+      return 'Initializing...';
     }
+
+    if (socketState.isConnected) {
+      return 'Connected';
+    }
+
+    if (socketState.lastError) {
+      if (socketState.lastError.includes('timeout')) {
+        return 'Connection timeout';
+      }
+      if (socketState.lastError.includes('WebSocket')) {
+        return 'Server unavailable';
+      }
+      if (socketState.lastError.includes('transport error') || socketState.reconnectAttempts > 0) {
+        return 'Reconnecting...';
+      }
+      return 'Connection error';
+    }
+
+    return 'Connecting...';
   }, [
-    connectionState.status,
-    connectionState.error,
+    socketState.isInitialized,
+    socketState.isConnected,
+    socketState.lastError,
+    socketState.reconnectAttempts,
     previousStatus,
-    isReconnecting,
     networkState.isConnected,
     networkState.isInternetReachable
   ]);
 
   useEffect(() => {
     let hideTimeout: NodeJS.Timeout;
-    let previousStatus = connectionState.status;
 
     const checkConnectionStatus = () => {
-      if (connectionState.appState !== 'active') {
+      if (!isAppActive) {
         setIsVisible(false);
         return;
       }
 
-      const shouldShow = !isConnected && connectionState.status !== 'initializing';
+      const shouldShow = !socketState.isConnected && socketState.isInitialized;
       
       if (shouldShow !== isVisible) {
         if (shouldShow) {
@@ -103,7 +93,6 @@ export function ConnectionStatusIndicator() {
           }, 2000);
         }
       }
-      previousStatus = connectionState.status;
     };
 
     checkConnectionStatus();
@@ -113,33 +102,28 @@ export function ConnectionStatusIndicator() {
       clearInterval(intervalId);
       if (hideTimeout) clearTimeout(hideTimeout);
     };
-  }, [connectionState, isConnected, isReconnecting, animateVisibility, isVisible, networkState, getMessage]);
+  }, [socketState, isAppActive, animateVisibility, isVisible, networkState, getMessage]);
 
   useEffect(() => {
-    setPreviousStatus(connectionState.status);
-  }, [connectionState.status]);
+    setPreviousStatus(socketState.isConnected);
+  }, [socketState.isConnected]);
 
-  if (!isVisible || connectionState.appState !== 'active') return null;
+  if (!isVisible || !isAppActive) return null;
 
   const getStatusColor = () => {
     if (!networkState.isConnected || !networkState.isInternetReachable) {
       return colors.warning;
     }
 
-    switch (connectionState.status) {
-      case 'connected':
-        return colors.success;
-      case 'connecting':
-      case 'disconnected':
-        if (isReconnecting || connectionState.error?.message?.includes('transport error')) {
-          return colors.warning;
-        }
-        return connectionState.status === 'connecting' ? colors.warning : colors.destructive;
-      case 'error':
-        return isReconnecting ? colors.warning : colors.destructive;
-      default:
-        return colors.warning;
+    if (socketState.isConnected) {
+      return colors.success;
     }
+
+    if (socketState.reconnectAttempts > 0 || socketState.lastError?.includes('transport error')) {
+      return colors.warning;
+    }
+
+    return colors.destructive;
   };
 
   return (
