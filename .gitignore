@@ -54,3 +54,4 @@ yarn-error.*
 .vscode/
 *.swp
 *.swo
+google-services.json

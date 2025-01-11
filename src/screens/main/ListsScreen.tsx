@@ -78,7 +78,7 @@ export default function ListsScreen() {
     };
   }, [lists]); // Only depend on lists changing
 
-  // Socket connection effect
+  // Socket connection effect for selected list updates
   useEffect(() => {
     if (!selectedList) return;
 
@@ -100,6 +100,32 @@ export default function ListsScreen() {
       };
     }
   }, [selectedList]);
+
+  // Socket connection effect for list creation and deletion
+  useEffect(() => {
+    if (!socketService.socket) return;
+
+    const onListCreated = (data: any) => {
+      dispatch(fetchLists());
+    };
+
+    const onListDeleted = (data: any) => {
+      if (data.listId === selectedList) {
+        setSelectedList(null);
+        storage.saveSelectedList(null);
+      }
+      dispatch(fetchLists());
+    };
+
+    socketService.socket.on('listCreated', onListCreated);
+    socketService.socket.on('listDeleted', onListDeleted);
+
+    // Cleanup: remove listeners
+    return () => {
+      socketService.socket?.off('listCreated', onListCreated);
+      socketService.socket?.off('listDeleted', onListDeleted);
+    };
+  }, []);
 
   const handleListPress = async (listId: string) => {
     if (selectedList) {
