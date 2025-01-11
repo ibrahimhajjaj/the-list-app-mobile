@@ -41,10 +41,8 @@ export default function LoginScreen({ navigation }: Props) {
       return;
     }
 
-    console.log('[Login] Attempting login with email:', email);
     try {
       const resultAction = await dispatch(loginUser({ email, password })).unwrap();
-      console.log('[Login] Login successful, user:', resultAction.user?._id);
     } catch (err: any) {
       console.error('[Login] Login failed:', {
         error: err?.message,
@@ -55,7 +53,6 @@ export default function LoginScreen({ navigation }: Props) {
   };
 
   const navigateToRegister = () => {
-    console.log('[Login] Navigating to register screen');
     dispatch(clearError());
     navigation.navigate('Register');
   };

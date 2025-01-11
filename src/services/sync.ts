@@ -1,12 +1,12 @@
 import { databaseService } from './database';
 import api from './api';
-import { store, updateListInStore } from '../store';
 import { List, ListItem } from '../types/list';
 import { storage } from './storage';
 import { conflictResolutionService } from './conflictResolution';
 import { ACTION_TYPES } from '../types/list';
 import { API_CONFIG } from '../config/api';
-import { fetchLists } from '../store/actions/listActions';
+import { Dispatch } from '@reduxjs/toolkit';
+import { syncActions } from '../store/actions/syncActions';
 
 // Define status types enum for better type safety and maintainability
 enum SyncStatus {
@@ -56,10 +56,34 @@ class SyncService {
   private syncInterval: NodeJS.Timeout | null = null;
   private cleanupInterval: NodeJS.Timeout | null = null;
   private idMappings: Map<string, IDMapping> = new Map();
+  private isConnected: boolean = true;
+  private isInternetReachable: boolean = true;
+  private dispatch: Dispatch | null = null;
 
   constructor() {
     this.initializeIdMappings();
     this.startCleanupInterval();
+  }
+
+  // Add method to set dispatch
+  setDispatch(dispatch: Dispatch) {
+    this.dispatch = dispatch;
+  }
+
+  private dispatchAction(action: any) {
+    if (this.dispatch) {
+      this.dispatch(action);
+    }
+  }
+
+  // Update network status
+  setNetworkStatus(isConnected: boolean, isInternetReachable: boolean) {
+    this.isConnected = isConnected;
+    this.isInternetReachable = isInternetReachable;
+
+    if (isConnected && isInternetReachable) {
+      this.processPendingChanges();
+    }
   }
 
   // Initialize ID mappings from database
@@ -146,18 +170,13 @@ class SyncService {
     }
 
     this.syncInterval = setInterval(() => {
-      const state = store.getState();
-      const isConnected = state.network.isConnected && state.network.isInternetReachable;
-      
-      if (isConnected) {
+      if (this.isConnected && this.isInternetReachable) {
         this.processPendingChanges();
       }
     }, intervalMs);
 
     // Initial sync on start if connected
-    const state = store.getState();
-    const isConnected = state.network.isConnected && state.network.isInternetReachable;
-    if (isConnected) {
+    if (this.isConnected && this.isInternetReachable) {
       this.processPendingChanges();
     }
   }
@@ -239,10 +258,7 @@ class SyncService {
     // For all other cases, proceed with adding a new pending change
     await databaseService.addPendingChange(actionType, entityId, data);
     
-    const state = store.getState();
-    const isConnected = state.network.isConnected && state.network.isInternetReachable;
-    
-    if (isConnected) {
+    if (this.isConnected && this.isInternetReachable) {
       this.processPendingChanges();
     }
   }
@@ -441,12 +457,17 @@ class SyncService {
           this.idMappings.set(newList._id, newMapping);
           await databaseService.saveIdMapping(change.entityId, newList._id, SyncStatus.COMPLETED);
         })(),
-        store.dispatch(updateListInStore(newList)),
         databaseService.removePendingChange(change.id)
       ]);
 
+      this.dispatchAction(syncActions.listUpdated(newList));
       await this.cleanupAfterSync(change.entityId, newList._id);
     } catch (error) {
+      if (error instanceof Error) {
+        this.dispatchAction(syncActions.syncFailed(error));
+      } else {
+        this.dispatchAction(syncActions.syncFailed(new Error('Unknown error during list creation')));
+      }
       throw error;
     }
   }
@@ -464,28 +485,27 @@ class SyncService {
       
       try {
         const response = await api.patch(`/lists/${actualId}`, change.data);
-        
-        await Promise.all([
-          store.dispatch(updateListInStore(response.data)),
-          databaseService.removePendingChange(change.id)
-        ]);
+        await databaseService.removePendingChange(change.id);
+        this.dispatchAction(syncActions.listUpdated(response.data));
       } catch (error: any) {
-        // Handle conflict (409) responses
         if (error.response?.status === 409) {
           const serverList = error.response.data.serverData;
           const mergedData = await this.handleConflict(change.entityId, serverList, error.response.data.conflictType);
 
           const retryResponse = await api.patch(`/lists/${actualId}`, mergedData);
-          
-          await Promise.all([
-            store.dispatch(updateListInStore(retryResponse.data)),
-            databaseService.removePendingChange(change.id)
-          ]);
+          await databaseService.removePendingChange(change.id);
+          this.dispatchAction(syncActions.listUpdated(retryResponse.data));
         } else {
+          this.dispatchAction(syncActions.syncFailed(new Error(error.message || 'Unknown error during list update')));
           throw error;
         }
       }
     } catch (error) {
+      if (error instanceof Error) {
+        this.dispatchAction(syncActions.syncFailed(error));
+      } else {
+        this.dispatchAction(syncActions.syncFailed(new Error('Unknown error during list update')));
+      }
       throw error;
     }
   }
@@ -544,31 +564,13 @@ class SyncService {
   // Process list item addition
   private async processAddListItems(change: PendingChange) {
     try {
-      console.log('[Sync] Processing add items:', {
-        listId: change.entityId,
-        items: change.data.items,
-        tempIds: change.data.items.map((i: ListItem) => i._id)
-      });
-
       const response = await api.post(API_CONFIG.ENDPOINTS.LISTS.ITEMS.BASE(change.entityId), change.data);
       const newItems = response.data;
-      
-      console.log('[Sync] Server response items:', {
-        newItems,
-        newItemIds: newItems.map((i: ListItem) => i._id)
-      });
       
       const currentLists = await storage.getLists() || [];
       const targetList = currentLists.find(list => list._id === change.entityId);
       
       if (targetList) {
-        console.log('[Sync] Current list state before update:', {
-          listId: targetList._id,
-          itemCount: targetList.items.length,
-          itemIds: targetList.items.map((i: ListItem) => i._id)
-        });
-
-        // Replace temporary items with server response
         targetList.items = [
           ...targetList.items.filter((item: ListItem) => 
             !change.data.items.some((temp: ListItem) => temp._id === item._id)
@@ -576,37 +578,24 @@ class SyncService {
           ...newItems
         ];
 
-        console.log('[Sync] Updated list state:', {
-          listId: targetList._id,
-          itemCount: targetList.items.length,
-          itemIds: targetList.items.map((i: ListItem) => i._id)
-        });
-
         await storage.saveLists(currentLists.map(list =>
           list._id === change.entityId ? targetList : list
         ));
 
-        // Update Redux store with the new items
-        console.log('[Sync] Dispatching store update with list:', {
-          listId: targetList._id,
-          itemCount: targetList.items.length,
-          itemIds: targetList.items.map((i: ListItem) => i._id)
-        });
-
-        store.dispatch(updateListInStore({
-          ...targetList,
-          items: targetList.items
+        this.dispatchAction(syncActions.listUpdated(targetList));
+        this.dispatchAction(syncActions.syncCompleted({ 
+          type: 'addItems', 
+          listId: change.entityId 
         }));
-
-        // Fetch fresh lists to ensure UI is up to date
-        console.log('[Sync] Fetching fresh lists after sync');
-        store.dispatch(fetchLists());
       }
 
       await databaseService.removePendingChange(change.id);
-      console.log('[Sync] Add items process completed');
     } catch (error) {
-      console.error('[Sync] Error processing add items:', error);
+      if (error instanceof Error) {
+        this.dispatchAction(syncActions.syncFailed(error));
+      } else {
+        this.dispatchAction(syncActions.syncFailed(new Error('Unknown error during item addition')));
+      }
       throw error;
     }
   }

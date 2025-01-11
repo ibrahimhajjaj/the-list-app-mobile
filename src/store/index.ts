@@ -23,9 +23,10 @@ import {
   setLoading, 
   setError 
 } from './actions/listActionCreators';
+import { syncMiddleware } from './middleware/syncMiddleware';
 
 // Configure store
-export const store = configureStore({
+const store = configureStore({
   reducer: {
     auth: authReducer,
     lists: listReducer,
@@ -33,20 +34,23 @@ export const store = configureStore({
     network: networkReducer,
     connection: connectionReducer,
   },
-  middleware: (getDefaultMiddleware) =>
-    getDefaultMiddleware({
+  middleware: (getDefaultMiddleware) => {
+    return getDefaultMiddleware({
       serializableCheck: {
-        // Ignore these action types
-        ignoredActions: ['network/setNetworkState', 'connection/setConnectionStatus'],
-        // Ignore these field paths in all actions
+        ignoredActions: [
+          'network/setNetworkState', 
+          'connection/setConnectionStatus',
+          'sync/syncFailed'
+        ],
         ignoredActionPaths: ['payload.details', 'payload.error'],
-        // Ignore these paths in the state
         ignoredPaths: ['network.details', 'connection.error'],
       },
-    }),
+    }).concat(syncMiddleware);
+  },
 });
 
-// Infer types from store
+// Export store and types
+export { store };
 export type RootState = ReturnType<typeof store.getState>;
 export type AppDispatch = typeof store.dispatch;
 

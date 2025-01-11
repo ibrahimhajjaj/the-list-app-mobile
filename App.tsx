@@ -6,9 +6,7 @@ import { store } from './src/store';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
-import Constants from 'expo-constants';
 
-console.log(Constants.expoConfig?.extra);
 export default function App() {
   return (
     <Provider store={store}>
